@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom'
 function AuthPage() {
   const navigate = useNavigate()
   const [mode, setMode] = useState('login')
-  const loginEndpoint = import.meta.env.VITE_AUTH_LOGIN_ENDPOINT ?? ''
-  const signupEndpoint = import.meta.env.VITE_AUTH_SIGNUP_ENDPOINT ?? ''
+  const loginEndpoint = (import.meta.env.VITE_AUTH_LOGIN_ENDPOINT ?? '/api/auth/login').trim()
+  const signupEndpoint = (import.meta.env.VITE_AUTH_SIGNUP_ENDPOINT ?? '/api/auth/signup').trim()
   const [form, setForm] = useState({
     fullName: '',
     email: '',
