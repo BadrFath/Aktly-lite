@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const dirigeantsEndpoint = (import.meta.env.VITE_LEGAKTE_DIRIGEANTS_ENDPOINT ?? '').trim()
-const veriffSessionEndpoint = (import.meta.env.VITE_VERIFF_SESSION_ENDPOINT ?? '').trim()
+const dirigeantsEndpoint = (import.meta.env.VITE_LEGAKTE_DIRIGEANTS_ENDPOINT ?? '/api/legakte/dirigeants').trim()
+const veriffSessionEndpoint = (import.meta.env.VITE_VERIFF_SESSION_ENDPOINT ?? '/api/veriff/session').trim()
 const bearerToken = (import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? '').trim()
 
 const normalizeDirigeant = (row, index) => {

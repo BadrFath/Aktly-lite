@@ -3,7 +3,9 @@ import { useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const searchEndpoint = (import.meta.env.VITE_LEGAKTE_SEARCH_ENDPOINT ?? '').trim()
+const searchEndpoint = (
+  import.meta.env.VITE_LEGAKTE_SEARCH_ENDPOINT ?? '/api/legakte/identification-entreprise/search'
+).trim()
 
 const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
 
