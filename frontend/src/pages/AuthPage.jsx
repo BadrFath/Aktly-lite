@@ -45,6 +45,7 @@ function AuthPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -56,7 +57,17 @@ function AuthPage() {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        const rawText = await response.text().catch(() => '')
+        let apiMessage = ''
+
+        try {
+          const parsed = rawText ? JSON.parse(rawText) : {}
+          apiMessage = parsed?.message || parsed?.error || ''
+        } catch {
+          apiMessage = rawText
+        }
+
+        throw new Error(apiMessage || `HTTP ${response.status}`)
       }
 
       const payload = await response.json().catch(() => ({}))
@@ -78,8 +89,11 @@ function AuthPage() {
 
       localStorage.setItem('aktly_step_1', 'done')
       navigate('/stripe')
-    } catch {
-      setErrorMessage('Authentification echouee. Verifie les identifiants et la configuration Render.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      setErrorMessage(
+        `Authentification echouee${message ? `: ${message}` : '. Verifie les identifiants et la configuration Render.'}`,
+      )
     } finally {
       setIsSubmitting(false)
     }
