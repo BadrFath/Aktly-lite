@@ -11,10 +11,17 @@ const usersFile = path.join(dataDir, "users.json");
 const authLoginUrl = (process.env.AUTH_LOGIN_URL || "").trim();
 const authSignupUrl = (process.env.AUTH_SIGNUP_URL || "").trim();
 const veriffSessionUrl = (process.env.VERIFF_SESSION_URL || "").trim();
+const veriffNotifyUrl = (process.env.VERIFF_NOTIFY_URL || "").trim();
 const legakteBearerToken = (process.env.LEGAKTE_BEARER_TOKEN || "").trim();
 const bnbApiBaseUrl = (process.env.BNB_API_BASE_URL_DEV || "").trim().replace(/\/$/, "");
 const bnbApiKey = (process.env.BNB_API_KEY || "").trim();
 const bnbEnterpriseSearchUrl = (process.env.BNB_ENTERPRISE_SEARCH_URL || "").trim();
+const stripePaymentLinkRuntime = (
+  process.env.STRIPE_PAYMENT_LINK ||
+  process.env.STRIPE_CHECKOUT_URL ||
+  process.env.VITE_STRIPE_PAYMENT_LINK ||
+  ""
+).trim();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -92,6 +99,19 @@ function hashPassword(password) {
 
 function createToken() {
   return crypto.randomBytes(24).toString("hex");
+}
+
+function normalizeExternalUrl(url) {
+  const cleaned = String(url || "").trim();
+  if (!cleaned) {
+    return "";
+  }
+
+  if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) {
+    return cleaned;
+  }
+
+  return `https://${cleaned}`;
 }
 
 function makeCompanyPayload(enterpriseNumber, langue) {
@@ -498,6 +518,42 @@ const server = http.createServer(async (req, res) => {
         session_id: crypto.randomUUID(),
         url: fallbackUrl,
       });
+      return;
+    }
+
+    if (method === "POST" && requestPath === "/api/veriff/notify") {
+      const payload = await readJsonBody(req);
+
+      if (veriffNotifyUrl) {
+        try {
+          const proxied = await proxyJsonPost(payload, veriffNotifyUrl);
+          sendJson(res, proxied.status, proxied.body);
+        } catch (error) {
+          sendJson(res, 502, {
+            message: "Erreur reseau vers le service de notification Veriff.",
+            details: String(error?.message || error),
+          });
+        }
+        return;
+      }
+
+      sendJson(res, 503, {
+        status: "not_configured",
+        message: "Service de notification Veriff non configure. Definis VERIFF_NOTIFY_URL.",
+      });
+      return;
+    }
+
+    if (method === "GET" && requestPath === "/api/stripe/payment-link") {
+      const url = normalizeExternalUrl(stripePaymentLinkRuntime);
+      if (!url) {
+        sendJson(res, 404, {
+          message: "Lien Stripe non configure. Definis STRIPE_PAYMENT_LINK (ou STRIPE_CHECKOUT_URL).",
+        });
+        return;
+      }
+
+      sendJson(res, 200, { url });
       return;
     }
 

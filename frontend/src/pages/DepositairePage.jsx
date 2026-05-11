@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 
 const dirigeantsEndpoint = (import.meta.env.VITE_LEGAKTE_DIRIGEANTS_ENDPOINT ?? '/api/legakte/dirigeants').trim()
 const veriffSessionEndpoint = (import.meta.env.VITE_VERIFF_SESSION_ENDPOINT ?? '/api/veriff/session').trim()
+const veriffNotifyEndpoint = (import.meta.env.VITE_VERIFF_NOTIFY_ENDPOINT ?? '/api/veriff/notify').trim()
 const bearerToken = (import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? '').trim()
 
 const normalizeDirigeant = (row, index) => {
@@ -59,7 +60,10 @@ function DepositairePage() {
   const [apiError, setApiError] = useState('')
   const [isLoadingDirigeants, setIsLoadingDirigeants] = useState(false)
   const [isSendingVeriff, setIsSendingVeriff] = useState(false)
+  const [isSendingNotify, setIsSendingNotify] = useState(false)
   const [veriffError, setVeriffError] = useState('')
+  const [notifyMessage, setNotifyMessage] = useState('')
+  const [notifySent, setNotifySent] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -125,6 +129,67 @@ function DepositairePage() {
   }, [dirigeants, selectedDirigeantId])
 
   const selectedDirigeant = dirigeants.find((item) => item.id === selectedDirigeantId)
+
+  const onNotifyAndContinue = async () => {
+    setIsSendingNotify(true)
+    setVeriffError('')
+    setNotifyMessage('')
+    setNotifySent(false)
+
+    try {
+      const authToken = localStorage.getItem('aktly_auth_token') ?? ''
+      const response = await fetch(veriffNotifyEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+          ...(authToken ? { 'X-Auth-Token': authToken } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          dirigeant: selectedDirigeant,
+          gsm,
+          notifiedAt: new Date().toISOString(),
+        }),
+      })
+
+      if (!response.ok) {
+        const raw = await response.text().catch(() => '')
+        let message = ''
+        try {
+          const parsed = raw ? JSON.parse(raw) : {}
+          message = parsed?.message || parsed?.details || ''
+        } catch {
+          message = raw
+        }
+        throw new Error(message || `HTTP ${response.status}`)
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      const status = String(payload?.status || '').toLowerCase()
+      const confirmed =
+        payload?.sent === true ||
+        payload?.success === true ||
+        ['sent', 'queued', 'delivered'].includes(status) ||
+        Boolean(payload?.messageId || payload?.message_id || payload?.reference)
+
+      if (!confirmed) {
+        throw new Error(payload?.message || 'Envoi non confirme par le service de notification.')
+      }
+
+      const message = payload?.message || 'Message envoye au depositaire.'
+      setNotifyMessage(message)
+      setNotifySent(true)
+      localStorage.setItem('aktly_veriff_notification', 'sent')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      setVeriffError(
+        `Impossible d envoyer le message Veriff${message ? `: ${message}` : '. Reessaye.'}`,
+      )
+    } finally {
+      setIsSendingNotify(false)
+    }
+  }
 
   const onSendVeriff = async (event) => {
     event.preventDefault()
@@ -269,18 +334,36 @@ function DepositairePage() {
           </p>
         )}
 
+        {notifyMessage && (
+          <p className="mt-4 rounded-lg border border-emerald-300/40 bg-emerald-300/10 px-3 py-2 text-sm text-emerald-100">
+            {notifyMessage}
+          </p>
+        )}
+
         {veriffSent && (
           <div className="mt-5 space-y-3 rounded-xl border border-fuchsia-300/40 bg-fuchsia-300/10 p-3 text-sm text-fuchsia-100">
             <p>Session Veriff creee. Le depositaire peut maintenant verifier son identite.</p>
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => navigate('/adresse-info')}
+                onClick={onNotifyAndContinue}
+                disabled={isSendingNotify}
                 className="wow-btn rounded-xl bg-fuchsia-200 px-4 py-2 font-semibold text-slate-900 transition hover:bg-fuchsia-100"
               >
-                Suivant
+                {isSendingNotify ? 'Envoi du message...' : 'Envoyer message Veriff'}
               </button>
             </div>
+            {notifySent && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => navigate('/adresse-info')}
+                  className="wow-btn rounded-xl bg-emerald-300 px-4 py-2 font-semibold text-slate-900 transition hover:bg-emerald-200"
+                >
+                  Continuer
+                </button>
+              </div>
+            )}
           </div>
         )}
       </motion.article>
