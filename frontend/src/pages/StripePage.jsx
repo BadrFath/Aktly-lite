@@ -155,25 +155,8 @@ function StripePage() {
         variants={cardReveal}
         className="rounded-3xl border border-slate-200/90 bg-slate-50 p-6 text-slate-700 shadow-2xl shadow-slate-950/20"
       >
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            className="rounded-xl bg-emerald-500 px-4 py-4 text-xl font-semibold text-emerald-950 transition hover:bg-emerald-400"
-          >
-            Payer avec Link
-          </button>
-          <button
-            type="button"
-            className="rounded-xl bg-amber-400 px-4 py-4 text-xl font-semibold text-slate-900 transition hover:bg-amber-300"
-          >
-            Amazon Pay
-          </button>
-        </div>
-
-        <div className="my-5 flex items-center gap-3 text-sm uppercase tracking-[0.18em] text-slate-400">
-          <span className="h-px flex-1 bg-slate-300" />
-          OU
-          <span className="h-px flex-1 bg-slate-300" />
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-900">
+          Paiement uniquement via Stripe
         </div>
 
         <form className="space-y-4" onSubmit={onPay}>
