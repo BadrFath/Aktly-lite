@@ -12,6 +12,9 @@ const authLoginUrl = (process.env.AUTH_LOGIN_URL || "").trim();
 const authSignupUrl = (process.env.AUTH_SIGNUP_URL || "").trim();
 const veriffSessionUrl = (process.env.VERIFF_SESSION_URL || "").trim();
 const legakteBearerToken = (process.env.LEGAKTE_BEARER_TOKEN || "").trim();
+const bnbApiBaseUrl = (process.env.BNB_API_BASE_URL_DEV || "").trim().replace(/\/$/, "");
+const bnbApiKey = (process.env.BNB_API_KEY || "").trim();
+const bnbEnterpriseSearchUrl = (process.env.BNB_ENTERPRISE_SEARCH_URL || "").trim();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -116,6 +119,136 @@ function makeCompanyPayload(enterpriseNumber, langue) {
       },
     },
   };
+}
+
+function normalizeBnbCompanyPayload(raw, enterpriseNumber, langue) {
+  const number = String(
+    raw?.number ||
+      raw?.enterpriseNumber ||
+      raw?.enterprise_number ||
+      raw?.kboNumber ||
+      enterpriseNumber ||
+      "",
+  ).replace(/\D+/g, "");
+
+  const fromDescriptions = raw?.denomination?.[0]?.description;
+  const companyName =
+    (Array.isArray(fromDescriptions)
+      ? fromDescriptions.find((item) => item?.language === langue)?.value ||
+        fromDescriptions.find((item) => item?.value)?.value
+      : null) ||
+    raw?.company_name ||
+    raw?.companyName ||
+    raw?.name ||
+    raw?.legalName ||
+    `Entreprise ${number}`;
+
+  const rawAddress =
+    raw?.address ||
+    raw?.headOfficeAddress ||
+    raw?.head_office_address ||
+    raw?.registeredOffice ||
+    raw?.registered_office ||
+    raw?.location ||
+    null;
+
+  const address =
+    typeof rawAddress === "string"
+      ? rawAddress
+      : [rawAddress?.street, rawAddress?.number, rawAddress?.postalCode, rawAddress?.city]
+          .filter(Boolean)
+          .join(" ") || "Adresse non disponible";
+
+  const status =
+    raw?.juridicalSituation?.status?.description?.[0]?.value ||
+    raw?.status ||
+    (langue === "nl" ? "Actief" : "Actif");
+
+  return {
+    lang_entre: langue || "fr",
+    number,
+    denomination: [
+      {
+        description: [
+          { language: "fr", value: String(companyName) },
+          { language: "nl", value: String(companyName) },
+        ],
+      },
+    ],
+    address,
+    typeOfEnterprise: raw?.typeOfEnterprise || raw?.enterpriseType || "ELP",
+    juridicalSituation: {
+      status: {
+        description: [{ language: langue || "fr", value: String(status) }],
+      },
+    },
+  };
+}
+
+function buildBnbCandidateUrls(enterpriseNumber, langue) {
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+
+  if (bnbEnterpriseSearchUrl) {
+    if (bnbEnterpriseSearchUrl.includes("{enterprise_number}")) {
+      return [bnbEnterpriseSearchUrl.replace("{enterprise_number}", cleanNumber)];
+    }
+
+    const separator = bnbEnterpriseSearchUrl.includes("?") ? "&" : "?";
+    return [`${bnbEnterpriseSearchUrl}${separator}enterprise_number=${encodeURIComponent(cleanNumber)}&langue=${encodeURIComponent(langue || "fr")}`];
+  }
+
+  if (!bnbApiBaseUrl) {
+    return [];
+  }
+
+  return [
+    `${bnbApiBaseUrl}/v1/enterprises/${cleanNumber}`,
+    `${bnbApiBaseUrl}/v1/enterprise/${cleanNumber}`,
+    `${bnbApiBaseUrl}/v1/kbo/${cleanNumber}`,
+    `${bnbApiBaseUrl}/v1/company/${cleanNumber}`,
+    `${bnbApiBaseUrl}/v1/companies/${cleanNumber}`,
+    `${bnbApiBaseUrl}/v1/enterprises?enterprise_number=${encodeURIComponent(cleanNumber)}&langue=${encodeURIComponent(langue || "fr")}`,
+  ];
+}
+
+async function fetchBnbCompany(enterpriseNumber, langue) {
+  const urls = buildBnbCandidateUrls(enterpriseNumber, langue);
+  if (urls.length === 0) {
+    return null;
+  }
+
+  let lastError = null;
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...(bnbApiKey
+            ? {
+                "X-API-KEY": bnbApiKey,
+                "x-api-key": bnbApiKey,
+                Authorization: `Bearer ${bnbApiKey}`,
+              }
+            : {}),
+        },
+      });
+
+      if (!response.ok) {
+        lastError = `HTTP ${response.status} on ${url}`;
+        continue;
+      }
+
+      const payload = await response.json();
+      const selected = Array.isArray(payload?.data) ? payload.data[0] : payload;
+      return normalizeBnbCompanyPayload(selected || {}, enterpriseNumber, langue);
+    } catch (error) {
+      lastError = String(error?.message || error);
+    }
+  }
+
+  throw new Error(lastError || "Aucune route BNB valide repond");
 }
 
 function makeDirigeantsPayload() {
@@ -286,6 +419,20 @@ const server = http.createServer(async (req, res) => {
       }
 
       const payload = await readJsonBody(req);
+      try {
+        const bnbPayload = await fetchBnbCompany(payload?.enterprise_number, payload?.langue);
+        if (bnbPayload) {
+          sendJson(res, 200, bnbPayload);
+          return;
+        }
+      } catch (error) {
+        sendJson(res, 502, {
+          message: "Echec de recuperation BNB.",
+          details: String(error?.message || error),
+        });
+        return;
+      }
+
       sendJson(res, 200, makeCompanyPayload(payload?.enterprise_number, payload?.langue));
       return;
     }
