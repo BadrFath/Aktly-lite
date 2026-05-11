@@ -10,12 +10,10 @@ const pack = {
   credits: 50,
 }
 
-const exchangeRateMad = 10.9
 const stripePaymentLink = (import.meta.env.VITE_STRIPE_PAYMENT_LINK ?? '').trim()
 
 function StripePage() {
   const navigate = useNavigate()
-  const [currency, setCurrency] = useState('EUR')
   const [email, setEmail] = useState('')
   const [country, setCountry] = useState('Maroc')
   const [cardName, setCardName] = useState('')
@@ -25,20 +23,12 @@ function StripePage() {
   const [errorMessage, setErrorMessage] = useState('')
 
   const money = useMemo(() => {
-    const eurAmount = pack.monthlyPriceEur
-    const amount = currency === 'EUR' ? eurAmount : Math.round(eurAmount * exchangeRateMad)
-    const symbol = currency === 'EUR' ? 'EUR' : 'MAD'
-    const display =
-      currency === 'EUR'
-        ? `${amount.toFixed(2).replace('.', ',')} EUR`
-        : `${amount.toFixed(0).replace('.', ',')} MAD`
-
     return {
-      amount,
-      symbol,
-      display,
+      amount: pack.monthlyPriceEur,
+      symbol: 'EUR',
+      display: `${pack.monthlyPriceEur.toFixed(2).replace('.', ',')} EUR`,
     }
-  }, [currency])
+  }, [])
 
   const onPay = (event) => {
     event.preventDefault()
@@ -88,36 +78,12 @@ function StripePage() {
           S abonner a Aktly - Formalites siege social
         </h2>
         <p className="mt-2 text-5xl font-semibold text-slate-900">
-          {currency === 'EUR' ? '29,00 EUR' : `${money.amount},00 MAD`}
+          {money.display}
           <span className="ml-2 text-2xl font-medium text-slate-500">/ mois</span>
         </p>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setCurrency('MAD')}
-            className={`rounded-xl border px-4 py-3 text-base font-semibold transition ${
-              currency === 'MAD'
-                ? 'border-slate-800 bg-white text-slate-900'
-                : 'border-slate-300 bg-slate-100 text-slate-600 hover:bg-white'
-            }`}
-          >
-            MAD
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrency('EUR')}
-            className={`rounded-xl border px-4 py-3 text-base font-semibold transition ${
-              currency === 'EUR'
-                ? 'border-slate-800 bg-white text-slate-900'
-                : 'border-slate-300 bg-slate-100 text-slate-600 hover:bg-white'
-            }`}
-          >
-            EUR
-          </button>
-        </div>
-        <p className="mt-3 text-sm text-slate-500">
-          Votre banque peut appliquer un taux de change et d autres frais.
+        <p className="mt-3 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
+          Paiement unique en euro (EUR)
         </p>
 
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-4">
@@ -140,7 +106,7 @@ function StripePage() {
             <div className="flex items-center justify-between">
               <span className="font-medium text-slate-700">Taxe</span>
               <span className="font-semibold text-slate-800">
-                {currency === 'EUR' ? '0,00 EUR' : '0 MAD'}
+                0,00 EUR
               </span>
             </div>
             <div className="flex items-center justify-between border-t border-slate-200 pt-3">
@@ -334,15 +300,15 @@ function StripePage() {
             <button
               type="button"
               onClick={() => navigate('/auth')}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 transition hover:border-slate-500"
+              className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-100 px-5 py-3 font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-500 hover:shadow-lg"
             >
               Precedent
             </button>
             <button
               type="submit"
-              className="rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-emerald-950 transition hover:bg-emerald-400"
+              className="rounded-xl bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-emerald-300/50 transition hover:-translate-y-0.5 hover:shadow-xl"
             >
-              Payer sur Stripe Live
+              Payer en EUR sur Stripe
             </button>
           </div>
           <p className="text-sm text-slate-500">
