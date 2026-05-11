@@ -1,0 +1,12 @@
+{
+  "name": "aktly-lite",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Root build wrapper for Render deployments",
+  "scripts": {
+    "build": "npm --prefix frontend ci && npm --prefix frontend run build && node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.cpSync('frontend/dist','dist',{recursive:true});\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
