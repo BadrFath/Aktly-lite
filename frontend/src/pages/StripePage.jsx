@@ -11,9 +11,7 @@ const pack = {
 }
 
 const exchangeRateMad = 10.9
-const stripePaymentLink =
-  import.meta.env.VITE_STRIPE_PAYMENT_LINK ??
-  'https://buy.stripe.com/28E8wP8X1gtzeOv7Wz7AI00'
+const stripePaymentLink = (import.meta.env.VITE_STRIPE_PAYMENT_LINK ?? '').trim()
 
 function StripePage() {
   const navigate = useNavigate()
@@ -24,6 +22,7 @@ function StripePage() {
   const [cardNumber, setCardNumber] = useState('')
   const [expiry, setExpiry] = useState('')
   const [cvc, setCvc] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   const money = useMemo(() => {
     const eurAmount = pack.monthlyPriceEur
@@ -43,6 +42,12 @@ function StripePage() {
 
   const onPay = (event) => {
     event.preventDefault()
+    setErrorMessage('')
+
+    if (!stripePaymentLink) {
+      setErrorMessage('Configuration Stripe manquante. Verifie VITE_STRIPE_PAYMENT_LINK sur Render.')
+      return
+    }
 
     const paymentPayload = {
       pack: {
@@ -62,16 +67,9 @@ function StripePage() {
       JSON.stringify(paymentPayload),
     )
 
-    if (stripePaymentLink) {
-      localStorage.setItem('aktly_step_2', 'pending_live_payment')
-      localStorage.setItem('aktly_payment_live_redirect', 'true')
-      window.location.assign(stripePaymentLink)
-      return
-    }
-
-    localStorage.setItem('aktly_step_2', 'done')
-
-    navigate('/company')
+    localStorage.setItem('aktly_step_2', 'pending_live_payment')
+    localStorage.setItem('aktly_payment_live_redirect', 'true')
+    window.location.assign(stripePaymentLink)
   }
 
   return (
@@ -367,6 +365,11 @@ function StripePage() {
           <p className="text-sm text-slate-500">
             Redirection vers la page de paiement securisee Stripe pour finaliser l abonnement.
           </p>
+          {errorMessage && (
+            <p className="rounded-lg border border-rose-300/40 bg-rose-300/10 px-3 py-2 text-sm text-rose-700">
+              {errorMessage}
+            </p>
+          )}
         </form>
       </motion.aside>
     </motion.div>

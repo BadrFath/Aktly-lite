@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom'
 function AuthPage() {
   const navigate = useNavigate()
   const [mode, setMode] = useState('login')
+  const loginEndpoint = import.meta.env.VITE_AUTH_LOGIN_ENDPOINT ?? ''
+  const signupEndpoint = import.meta.env.VITE_AUTH_SIGNUP_ENDPOINT ?? ''
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -13,6 +15,7 @@ function AuthPage() {
     confirmPassword: '',
   })
   const [errorMessage, setErrorMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const onChange = (event) => {
     const { name, value } = event.target
@@ -20,25 +23,66 @@ function AuthPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  const onSubmit = (event) => {
+  const onSubmit = async (event) => {
     event.preventDefault()
+    const endpoint = mode === 'signup' ? signupEndpoint : loginEndpoint
+
+    if (!endpoint) {
+      setErrorMessage('Configuration auth manquante. Verifie VITE_AUTH_LOGIN_ENDPOINT et VITE_AUTH_SIGNUP_ENDPOINT.')
+      return
+    }
 
     if (mode === 'signup' && form.password !== form.confirmPassword) {
       setErrorMessage('Les mots de passe ne correspondent pas.')
       return
     }
 
-    localStorage.setItem(
-      'aktly_user',
-      JSON.stringify({
-        name: form.fullName || 'Utilisateur Lite',
-        email: form.email,
-        mode,
-      }),
-    )
-    localStorage.setItem('aktly_step_1', 'done')
+    setIsSubmitting(true)
+    setErrorMessage('')
 
-    navigate('/stripe')
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: form.fullName,
+          email: form.email,
+          password: form.password,
+          ...(mode === 'signup' ? { password_confirmation: form.confirmPassword } : {}),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      const token = payload?.token ?? payload?.access_token ?? payload?.data?.token ?? ''
+      const user = payload?.user ?? payload?.data?.user ?? null
+
+      localStorage.setItem(
+        'aktly_user',
+        JSON.stringify({
+          name: user?.name || form.fullName,
+          email: user?.email || form.email,
+          mode,
+        }),
+      )
+
+      if (token) {
+        localStorage.setItem('aktly_auth_token', token)
+      }
+
+      localStorage.setItem('aktly_step_1', 'done')
+      navigate('/stripe')
+    } catch {
+      setErrorMessage('Authentification echouee. Verifie les identifiants et la configuration Render.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -53,7 +97,7 @@ function AuthPage() {
         className="wow-panel rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-emerald-900/10"
       >
         <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">
-          Authentification (hors parcours)
+          Authentification reelle
         </p>
         <h2 className="mt-3 text-3xl font-bold">Login / Sign up</h2>
         <p className="mt-2 max-w-lg text-slate-300">
@@ -149,9 +193,10 @@ function AuthPage() {
           <div className="flex items-center justify-end gap-3">
             <button
               type="submit"
+              disabled={isSubmitting}
               className="wow-btn rounded-xl bg-emerald-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-emerald-300"
             >
-              Suivant
+              {isSubmitting ? 'Verification...' : 'Suivant'}
             </button>
           </div>
         </form>

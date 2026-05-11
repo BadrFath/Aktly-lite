@@ -3,39 +3,9 @@ import { useEffect, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const fallbackDirigeants = [
-  {
-    id: '657',
-    demandeId: 'a0eaa59a-31f1-4e54-8b16-0ec5f69705d3',
-    surname: 'El Yakoubi',
-    givenName: 'Mohamed',
-    function: 'Administrateur',
-  },
-  {
-    id: '652',
-    demandeId: 'a0d5cc74-2911-4044-9369-e05188669e5f',
-    surname: 'Pousseur',
-    givenName: 'Celine',
-    function: 'Administrateur',
-  },
-  {
-    id: '648',
-    demandeId: 'a0d4497b-c8bf-4e04-af9a-476fb23d93c3',
-    surname: 'Proye',
-    givenName: 'Glenn',
-    function: 'Administrateur',
-  },
-  {
-    id: '632',
-    demandeId: 'a0cd2c29-3bf3-4b68-8f39-11e4093b3a5f',
-    surname: 'Schroeter',
-    givenName: 'Loic',
-    function: 'Bestuurder',
-  },
-]
-
-const dirigeantsEndpoint = import.meta.env.VITE_LEGAKTE_DIRIGEANTS_ENDPOINT ?? ''
-const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
+const dirigeantsEndpoint = (import.meta.env.VITE_LEGAKTE_DIRIGEANTS_ENDPOINT ?? '').trim()
+const veriffSessionEndpoint = (import.meta.env.VITE_VERIFF_SESSION_ENDPOINT ?? '').trim()
+const bearerToken = (import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? '').trim()
 
 const normalizeDirigeant = (row, index) => {
   const fullName = (row?.name ?? '').trim()
@@ -81,20 +51,23 @@ const extractRows = (payload) => {
 function DepositairePage() {
   const navigate = useNavigate()
   const [type, setType] = useState('comptable')
-  const [dirigeants, setDirigeants] = useState(fallbackDirigeants)
-  const [selectedDirigeantId, setSelectedDirigeantId] = useState(fallbackDirigeants[0]?.id ?? '')
-  const [gsm, setGsm] = useState('+32470123456')
+  const [dirigeants, setDirigeants] = useState([])
+  const [selectedDirigeantId, setSelectedDirigeantId] = useState('')
+  const [gsm, setGsm] = useState('')
   const [veriffSent, setVeriffSent] = useState(false)
-  const [sourceLabel, setSourceLabel] = useState('SQLite locale')
+  const [sourceLabel, setSourceLabel] = useState('API Legakte live')
   const [apiError, setApiError] = useState('')
   const [isLoadingDirigeants, setIsLoadingDirigeants] = useState(false)
+  const [isSendingVeriff, setIsSendingVeriff] = useState(false)
+  const [veriffError, setVeriffError] = useState('')
 
   useEffect(() => {
     let cancelled = false
 
     const loadDirigeants = async () => {
       if (!dirigeantsEndpoint) {
-        setSourceLabel('SQLite locale')
+        setSourceLabel('Configuration manquante')
+        setApiError('Configuration dirigeants manquante. Verifie VITE_LEGAKTE_DIRIGEANTS_ENDPOINT.')
         return
       }
 
@@ -124,12 +97,12 @@ function DepositairePage() {
           setSourceLabel('API Legakte live')
         } else if (!cancelled) {
           setApiError('API connectee, mais aucun dirigeant n a ete retourne.')
-          setSourceLabel('SQLite locale')
+          setSourceLabel('API Legakte live')
         }
       } catch {
         if (!cancelled) {
-          setApiError('API dirigeants indisponible. Donnees locales affichees.')
-          setSourceLabel('SQLite locale')
+          setApiError('API dirigeants indisponible ou non authentifiee.')
+          setSourceLabel('API Legakte live')
         }
       } finally {
         if (!cancelled) {
@@ -153,8 +126,17 @@ function DepositairePage() {
 
   const selectedDirigeant = dirigeants.find((item) => item.id === selectedDirigeantId)
 
-  const onSendVeriff = (event) => {
+  const onSendVeriff = async (event) => {
     event.preventDefault()
+
+    if (!veriffSessionEndpoint) {
+      setVeriffError('Configuration Veriff manquante. Verifie VITE_VERIFF_SESSION_ENDPOINT.')
+      return
+    }
+
+    setVeriffError('')
+    setIsSendingVeriff(true)
+
     const payload = {
       depositaire_type: type,
       dirigeant: selectedDirigeant,
@@ -162,9 +144,46 @@ function DepositairePage() {
       sentAt: new Date().toISOString(),
     }
 
-    localStorage.setItem('aktly_depositaire', JSON.stringify(payload))
-    localStorage.setItem('aktly_step_4', 'done')
-    setVeriffSent(true)
+    try {
+      const authToken = localStorage.getItem('aktly_auth_token') ?? ''
+      const response = await fetch(veriffSessionEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+          ...(authToken ? { 'X-Auth-Token': authToken } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const veriffPayload = await response.json().catch(() => ({}))
+      const veriffUrl =
+        veriffPayload?.url ??
+        veriffPayload?.veriff_url ??
+        veriffPayload?.sessionUrl ??
+        veriffPayload?.session_url ??
+        ''
+
+      localStorage.setItem('aktly_depositaire', JSON.stringify(payload))
+      localStorage.setItem('aktly_step_4', 'done')
+
+      if (veriffUrl) {
+        localStorage.setItem('aktly_veriff_url', veriffUrl)
+        window.location.assign(veriffUrl)
+        return
+      }
+
+      setVeriffSent(true)
+    } catch {
+      setVeriffError('Envoi Veriff echoue. Verifie les variables et la connectivite Render.')
+    } finally {
+      setIsSendingVeriff(false)
+    }
   }
 
   return (
@@ -236,16 +255,23 @@ function DepositairePage() {
             </button>
             <button
               type="submit"
+              disabled={isSendingVeriff || !selectedDirigeant}
               className="wow-btn rounded-xl bg-fuchsia-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-fuchsia-300"
             >
-              Lancer Veriff
+              {isSendingVeriff ? 'Envoi en cours...' : 'Lancer Veriff'}
             </button>
           </div>
         </form>
 
+        {veriffError && (
+          <p className="mt-4 rounded-lg border border-rose-300/40 bg-rose-300/10 px-3 py-2 text-sm text-rose-200">
+            {veriffError}
+          </p>
+        )}
+
         {veriffSent && (
           <div className="mt-5 space-y-3 rounded-xl border border-fuchsia-300/40 bg-fuchsia-300/10 p-3 text-sm text-fuchsia-100">
-            <p>Lien Veriff simule envoye. Le depositaire peut maintenant verifier son identite.</p>
+            <p>Session Veriff creee. Le depositaire peut maintenant verifier son identite.</p>
             <div className="flex justify-end">
               <button
                 type="button"
@@ -270,6 +296,9 @@ function DepositairePage() {
         {isLoadingDirigeants && <p className="mt-2 text-xs text-sky-300">Chargement des dirigeants...</p>}
         {apiError && <p className="mt-2 text-xs text-amber-300">{apiError}</p>}
         <div className="mt-4 space-y-3">
+          {!isLoadingDirigeants && dirigeants.length === 0 && (
+            <p className="text-sm text-slate-300">Aucun dirigeant disponible via l API.</p>
+          )}
           {dirigeants.map((dirigeant) => (
             <div key={dirigeant.id} className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm">
               <p className="font-semibold text-slate-100">
