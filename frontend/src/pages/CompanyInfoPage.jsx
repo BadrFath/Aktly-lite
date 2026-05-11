@@ -90,7 +90,17 @@ function CompanyInfoPage() {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        const rawText = await response.text().catch(() => '')
+        let apiMessage = ''
+
+        try {
+          const parsed = rawText ? JSON.parse(rawText) : {}
+          apiMessage = parsed?.message || parsed?.details || ''
+        } catch {
+          apiMessage = rawText
+        }
+
+        throw new Error(apiMessage || `HTTP ${response.status}`)
       }
 
       const payload = await response.json()
@@ -98,9 +108,12 @@ function CompanyInfoPage() {
       setCompanyData(normalizedData)
       localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
       localStorage.setItem('aktly_step_3', 'done')
-    } catch {
+    } catch (error) {
       setCompanyData(null)
-      setErrorMessage('Recherche Legakte echouee. Verifie le bearer token et l endpoint Render.')
+      const message = error instanceof Error ? error.message : ''
+      setErrorMessage(
+        `Recherche Legakte echouee${message ? `: ${message}` : '. Verifie le bearer token et l endpoint Render.'}`,
+      )
     } finally {
       setIsLoading(false)
     }

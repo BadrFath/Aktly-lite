@@ -207,7 +207,15 @@ function buildBnbCandidateUrls(enterpriseNumber, langue) {
     `${bnbApiBaseUrl}/v1/kbo/${cleanNumber}`,
     `${bnbApiBaseUrl}/v1/company/${cleanNumber}`,
     `${bnbApiBaseUrl}/v1/companies/${cleanNumber}`,
+    `${bnbApiBaseUrl}/ws/v1/enterprises/${cleanNumber}`,
+    `${bnbApiBaseUrl}/ws/v1/enterprise/${cleanNumber}`,
+    `${bnbApiBaseUrl}/ws/v1/kbo/${cleanNumber}`,
+    `${bnbApiBaseUrl}/api/v1/enterprises/${cleanNumber}`,
+    `${bnbApiBaseUrl}/services/v1/enterprises/${cleanNumber}`,
+    `${bnbApiBaseUrl}/services/enterprise/${cleanNumber}`,
     `${bnbApiBaseUrl}/v1/enterprises?enterprise_number=${encodeURIComponent(cleanNumber)}&langue=${encodeURIComponent(langue || "fr")}`,
+    `${bnbApiBaseUrl}/ws/v1/enterprises?enterprise_number=${encodeURIComponent(cleanNumber)}&langue=${encodeURIComponent(langue || "fr")}`,
+    `${bnbApiBaseUrl}/api/v1/enterprises?enterprise_number=${encodeURIComponent(cleanNumber)}&langue=${encodeURIComponent(langue || "fr")}`,
   ];
 }
 
@@ -221,28 +229,48 @@ async function fetchBnbCompany(enterpriseNumber, langue) {
 
   for (const url of urls) {
     try {
-      const response = await fetch(url, {
+      const headers = {
+        Accept: "application/json",
+        ...(bnbApiKey
+          ? {
+              "X-API-KEY": bnbApiKey,
+              "x-api-key": bnbApiKey,
+              Authorization: `Bearer ${bnbApiKey}`,
+            }
+          : {}),
+      };
+
+      const urlWithKey = bnbApiKey
+        ? `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(bnbApiKey)}`
+        : url;
+
+      const getResponse = await fetch(urlWithKey, {
         method: "GET",
-        headers: {
-          Accept: "application/json",
-          ...(bnbApiKey
-            ? {
-                "X-API-KEY": bnbApiKey,
-                "x-api-key": bnbApiKey,
-                Authorization: `Bearer ${bnbApiKey}`,
-              }
-            : {}),
-        },
+        headers,
       });
 
-      if (!response.ok) {
-        lastError = `HTTP ${response.status} on ${url}`;
-        continue;
+      if (getResponse.ok) {
+        const payload = await getResponse.json();
+        const selected = Array.isArray(payload?.data) ? payload.data[0] : payload;
+        return normalizeBnbCompanyPayload(selected || {}, enterpriseNumber, langue);
       }
 
-      const payload = await response.json();
-      const selected = Array.isArray(payload?.data) ? payload.data[0] : payload;
-      return normalizeBnbCompanyPayload(selected || {}, enterpriseNumber, langue);
+      const postResponse = await fetch(urlWithKey, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ enterprise_number: enterpriseNumber, langue: langue || "fr" }),
+      });
+
+      if (postResponse.ok) {
+        const payload = await postResponse.json();
+        const selected = Array.isArray(payload?.data) ? payload.data[0] : payload;
+        return normalizeBnbCompanyPayload(selected || {}, enterpriseNumber, langue);
+      }
+
+      lastError = `HTTP ${getResponse.status}/${postResponse.status} on ${url}`;
     } catch (error) {
       lastError = String(error?.message || error);
     }
@@ -426,9 +454,11 @@ const server = http.createServer(async (req, res) => {
           return;
         }
       } catch (error) {
-        sendJson(res, 502, {
-          message: "Echec de recuperation BNB.",
-          details: String(error?.message || error),
+        const fallback = makeCompanyPayload(payload?.enterprise_number, payload?.langue);
+        sendJson(res, 200, {
+          ...fallback,
+          warning: "BNB indisponible, resultat de secours utilise.",
+          bnb_error: String(error?.message || error),
         });
         return;
       }
