@@ -28,6 +28,50 @@ function AppLayout() {
   const [showFilesLangPrompt, setShowFilesLangPrompt] = useState(false)
   const [filesLanguage, setFilesLanguage] = useState(localStorage.getItem('aktly_files_language') || 'fr')
   const [pendingRoute, setPendingRoute] = useState('')
+  const [privilegedAccess, setPrivilegedAccess] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadAccessScope = async () => {
+      const token = localStorage.getItem('aktly_auth_token') || ''
+      if (!token) {
+        if (!cancelled) {
+          setPrivilegedAccess(false)
+        }
+        return
+      }
+
+      try {
+        const response = await fetch('/api/auth/access-scope', {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            'X-Auth-Token': token,
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const payload = await response.json().catch(() => ({}))
+        if (!cancelled) {
+          setPrivilegedAccess(Boolean(payload?.privileged))
+        }
+      } catch {
+        if (!cancelled) {
+          setPrivilegedAccess(false)
+        }
+      }
+    }
+
+    loadAccessScope()
+
+    return () => {
+      cancelled = true
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     if (location.pathname === '/company' && !localStorage.getItem('aktly_files_language')) {
@@ -39,6 +83,7 @@ function AppLayout() {
   const onLogout = () => {
     localStorage.clear()
     sessionStorage.clear()
+    setPrivilegedAccess(false)
     navigate('/auth')
   }
 
@@ -140,10 +185,10 @@ function AppLayout() {
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/stripe" element={<StripePage />} />
               <Route path="/stripe/result" element={<StripeResultPage />} />
-              <Route path="/company" element={<CompanyInfoPage />} />
+              <Route path="/company" element={<CompanyInfoPage privilegedAccess={privilegedAccess} />} />
               <Route path="/depositaire" element={<DepositairePage />} />
               <Route path="/adresse-info" element={<AddressInfoPage />} />
-              <Route path="/dossier-final" element={<FinalDossierPage />} />
+              <Route path="/dossier-final" element={<FinalDossierPage privilegedAccess={privilegedAccess} />} />
             </Routes>
           </motion.div>
         </AnimatePresence>

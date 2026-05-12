@@ -26,7 +26,7 @@ const dossierFiles = [
   },
 ]
 
-function FinalDossierPage() {
+function FinalDossierPage({ privilegedAccess = false }) {
   const navigate = useNavigate()
   const isPaymentVerified = localStorage.getItem('aktly_payment_verified') === 'true'
 
@@ -49,7 +49,7 @@ function FinalDossierPage() {
     window.print()
   }
 
-  if (!isPaymentVerified) {
+  if (!isPaymentVerified && !privilegedAccess) {
     return (
       <motion.div className="page-grid" variants={pageContainer} initial="hidden" animate="visible">
         <motion.article

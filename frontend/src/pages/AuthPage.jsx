@@ -72,7 +72,12 @@ function AuthPage() {
       }
 
       const payload = await response.json().catch(() => ({}))
-      const token = payload?.token ?? payload?.access_token ?? payload?.data?.token ?? ''
+      const token =
+        payload?.app_token ??
+        payload?.token ??
+        payload?.access_token ??
+        payload?.data?.token ??
+        ''
       const user = payload?.user ?? payload?.data?.user ?? null
 
       localStorage.setItem(

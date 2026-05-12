@@ -8,6 +8,8 @@ const host = "0.0.0.0";
 const distDir = path.resolve("dist");
 const dataDir = path.resolve(".data");
 const usersFile = path.join(dataDir, "users.json");
+const sessionsFile = path.join(dataDir, "sessions.json");
+const privilegedEmails = new Set(["badrfath16@gmail.com", "contact@legakte.be"]);
 const authLoginUrl = (process.env.AUTH_LOGIN_URL || "").trim();
 const authSignupUrl = (process.env.AUTH_SIGNUP_URL || "").trim();
 const useRemoteAuth = Boolean(authLoginUrl && authSignupUrl);
@@ -87,6 +89,15 @@ async function ensureUsersStore() {
   }
 }
 
+async function ensureSessionsStore() {
+  await fs.mkdir(dataDir, { recursive: true });
+  try {
+    await fs.access(sessionsFile);
+  } catch {
+    await fs.writeFile(sessionsFile, "[]", "utf8");
+  }
+}
+
 async function readUsers() {
   await ensureUsersStore();
   const raw = await fs.readFile(usersFile, "utf8");
@@ -99,12 +110,79 @@ async function writeUsers(users) {
   await fs.writeFile(usersFile, JSON.stringify(users, null, 2), "utf8");
 }
 
+async function readSessions() {
+  await ensureSessionsStore();
+  const raw = await fs.readFile(sessionsFile, "utf8");
+  const parsed = JSON.parse(raw);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+async function writeSessions(sessions) {
+  await ensureSessionsStore();
+  await fs.writeFile(sessionsFile, JSON.stringify(sessions, null, 2), "utf8");
+}
+
 function hashPassword(password) {
   return crypto.createHash("sha256").update(String(password || "")).digest("hex");
 }
 
 function createToken() {
   return crypto.randomBytes(24).toString("hex");
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+async function createAccessSession(email, userId) {
+  const normalizedEmail = normalizeEmail(email);
+  const token = createToken();
+  const privileged = privilegedEmails.has(normalizedEmail);
+  const sessions = await readSessions();
+
+  sessions.push({
+    token,
+    email: normalizedEmail,
+    userId: String(userId || ""),
+    privileged,
+    createdAt: new Date().toISOString(),
+  });
+
+  if (sessions.length > 2000) {
+    sessions.splice(0, sessions.length - 2000);
+  }
+
+  await writeSessions(sessions);
+
+  return {
+    token,
+    email: normalizedEmail,
+    privileged,
+  };
+}
+
+async function findAccessSession(token) {
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
+  const sessions = await readSessions();
+  return sessions.find((session) => session.token === normalizedToken) || null;
+}
+
+function extractAccessToken(req) {
+  const direct = String(req.headers['x-auth-token'] || '').trim();
+  if (direct) {
+    return direct;
+  }
+
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+
+  return '';
 }
 
 function normalizeExternalUrl(url) {
@@ -412,9 +490,41 @@ async function proxyAuth(req, res, targetUrl) {
     });
 
     const upstreamBody = await upstream.text();
-    res.statusCode = upstream.status;
-    res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json; charset=utf-8");
-    res.end(upstreamBody);
+
+    if (!upstream.ok) {
+      res.statusCode = upstream.status;
+      res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json; charset=utf-8");
+      res.end(upstreamBody);
+      return;
+    }
+
+    let parsed = {};
+    try {
+      parsed = upstreamBody ? JSON.parse(upstreamBody) : {};
+    } catch {
+      parsed = {};
+    }
+
+    const email =
+      parsed?.user?.email ||
+      parsed?.data?.user?.email ||
+      payload?.email ||
+      '';
+    const userId = parsed?.user?.id || parsed?.data?.user?.id || '';
+
+    if (email) {
+      const appSession = await createAccessSession(email, userId);
+      parsed = {
+        ...parsed,
+        app_token: appSession.token,
+        access: {
+          email: appSession.email,
+          privileged: appSession.privileged,
+        },
+      };
+    }
+
+    sendJson(res, upstream.status, parsed);
   } catch (error) {
     res.statusCode = 502;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -446,7 +556,7 @@ async function proxyJsonPost(payload, targetUrl) {
 async function handleLocalSignup(req, res) {
   const payload = await readJsonBody(req);
   const name = String(payload?.name || "").trim();
-  const email = String(payload?.email || "").trim().toLowerCase();
+  const email = normalizeEmail(payload?.email || "");
   const password = String(payload?.password || "");
 
   if (!name || !email || !password) {
@@ -471,15 +581,22 @@ async function handleLocalSignup(req, res) {
   users.push(user);
   await writeUsers(users);
 
+  const appSession = await createAccessSession(user.email, user.id);
+
   sendJson(res, 201, {
-    token: createToken(),
+    token: appSession.token,
+    app_token: appSession.token,
+    access: {
+      email: appSession.email,
+      privileged: appSession.privileged,
+    },
     user: { id: user.id, name: user.name, email: user.email },
   });
 }
 
 async function handleLocalLogin(req, res) {
   const payload = await readJsonBody(req);
-  const email = String(payload?.email || "").trim().toLowerCase();
+  const email = normalizeEmail(payload?.email || "");
   const password = String(payload?.password || "");
 
   if (!email || !password) {
@@ -494,8 +611,15 @@ async function handleLocalLogin(req, res) {
     return;
   }
 
+  const appSession = await createAccessSession(user.email, user.id);
+
   sendJson(res, 200, {
-    token: createToken(),
+    token: appSession.token,
+    app_token: appSession.token,
+    access: {
+      email: appSession.email,
+      privileged: appSession.privileged,
+    },
     user: { id: user.id, name: user.name, email: user.email },
   });
 }
@@ -520,6 +644,23 @@ const server = http.createServer(async (req, res) => {
       } else {
         await handleLocalSignup(req, res);
       }
+      return;
+    }
+
+    if (method === 'GET' && requestPath === '/api/auth/access-scope') {
+      const token = extractAccessToken(req);
+      const session = await findAccessSession(token);
+
+      if (!session) {
+        sendJson(res, 401, { message: 'Session invalide.', authenticated: false });
+        return;
+      }
+
+      sendJson(res, 200, {
+        authenticated: true,
+        email: session.email,
+        privileged: Boolean(session.privileged),
+      });
       return;
     }
 
