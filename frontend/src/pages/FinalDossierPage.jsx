@@ -28,6 +28,7 @@ const dossierFiles = [
 
 function FinalDossierPage() {
   const navigate = useNavigate()
+  const isPaymentVerified = localStorage.getItem('aktly_payment_verified') === 'true'
 
   const payment = useMemo(() => {
     const raw = localStorage.getItem('aktly_payment')
@@ -46,6 +47,32 @@ function FinalDossierPage() {
 
   const onPrintDossier = () => {
     window.print()
+  }
+
+  if (!isPaymentVerified) {
+    return (
+      <motion.div className="page-grid" variants={pageContainer} initial="hidden" animate="visible">
+        <motion.article
+          variants={cardReveal}
+          className="wow-panel rounded-3xl border border-rose-300/30 bg-slate-900/70 p-6 shadow-xl shadow-rose-900/20"
+        >
+          <p className="text-xs uppercase tracking-[0.2em] text-rose-300">Acces bloque</p>
+          <h2 className="mt-3 text-3xl font-bold">Paiement Stripe non confirme</h2>
+          <p className="mt-3 text-slate-200">
+            Les formulaires finaux ne sont pas charges tant que le paiement n est pas confirme.
+          </p>
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/stripe')}
+              className="wow-btn rounded-xl bg-emerald-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-emerald-300"
+            >
+              Aller au paiement Stripe
+            </button>
+          </div>
+        </motion.article>
+      </motion.div>
+    )
   }
 
   return (

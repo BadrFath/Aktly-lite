@@ -17,6 +17,11 @@ const legakteBearerToken = (process.env.LEGAKTE_BEARER_TOKEN || "").trim();
 const bnbApiBaseUrl = (process.env.BNB_API_BASE_URL_DEV || "").trim().replace(/\/$/, "");
 const bnbApiKey = (process.env.BNB_API_KEY || "").trim();
 const bnbEnterpriseSearchUrl = (process.env.BNB_ENTERPRISE_SEARCH_URL || "").trim();
+const stripeSecretKey = (
+  process.env.STRIPE_SECRET ||
+  process.env.STRIPE_SECRET_KEY ||
+  ""
+).trim();
 const stripePaymentLinkRuntime = (
   process.env.STRIPE_PAYMENT_LINK ||
   process.env.STRIPE_CHECKOUT_URL ||
@@ -113,6 +118,63 @@ function normalizeExternalUrl(url) {
   }
 
   return `https://${cleaned}`;
+}
+
+function buildOrigin(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim()
+  const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim()
+  if (!hostHeader) {
+    return ''
+  }
+  return `${proto}://${hostHeader}`
+}
+
+async function stripeRequest(pathname, formDataEntries) {
+  if (!stripeSecretKey) {
+    throw new Error('Cle Stripe serveur manquante. Definis STRIPE_SECRET.')
+  }
+
+  const body = new URLSearchParams()
+  for (const [key, value] of formDataEntries) {
+    body.append(key, String(value))
+  }
+
+  const response = await fetch(`https://api.stripe.com/v1${pathname}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  })
+
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `Stripe HTTP ${response.status}`)
+  }
+
+  return payload
+}
+
+async function stripeGet(pathname) {
+  if (!stripeSecretKey) {
+    throw new Error('Cle Stripe serveur manquante. Definis STRIPE_SECRET.')
+  }
+
+  const response = await fetch(`https://api.stripe.com/v1${pathname}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${stripeSecretKey}`,
+      Accept: 'application/json',
+    },
+  })
+
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `Stripe HTTP ${response.status}`)
+  }
+
+  return payload
 }
 
 function makeCompanyPayload(enterpriseNumber, langue) {
@@ -556,6 +618,89 @@ const server = http.createServer(async (req, res) => {
 
       sendJson(res, 200, { url });
       return;
+    }
+
+    if (method === "POST" && requestPath === "/api/stripe/create-checkout-session") {
+      try {
+        const payload = await readJsonBody(req)
+        const amountEur = Number(payload?.amount_eur || 29)
+        const amountCents = Math.max(100, Math.round(amountEur * 100))
+        const title = String(payload?.title || 'Aktly - Formalites siege social')
+        const slug = String(payload?.slug || 'formalites-siege-social')
+        const credits = String(payload?.credits || 50)
+
+        const origin = buildOrigin(req)
+        const successUrl = `${origin}/stripe/result?status=success&session_id={CHECKOUT_SESSION_ID}`
+        const cancelUrl = `${origin}/stripe/result?status=cancel`
+
+        if (stripeSecretKey) {
+          const session = await stripeRequest('/checkout/sessions', [
+            ['mode', 'payment'],
+            ['success_url', successUrl],
+            ['cancel_url', cancelUrl],
+            ['line_items[0][price_data][currency]', 'eur'],
+            ['line_items[0][price_data][product_data][name]', title],
+            ['line_items[0][price_data][unit_amount]', amountCents],
+            ['line_items[0][quantity]', 1],
+            ['metadata[slug]', slug],
+            ['metadata[credits]', credits],
+          ])
+
+          sendJson(res, 200, {
+            id: session?.id,
+            url: session?.url,
+          })
+          return
+        }
+
+        const fallbackLink = normalizeExternalUrl(stripePaymentLinkRuntime)
+        if (!fallbackLink) {
+          sendJson(res, 503, {
+            message: 'Stripe non configure: ajoute STRIPE_SECRET ou STRIPE_PAYMENT_LINK.',
+          })
+          return
+        }
+
+        sendJson(res, 200, { id: null, url: fallbackLink })
+      } catch (error) {
+        sendJson(res, 502, {
+          message: 'Creation de session Stripe echouee.',
+          details: String(error?.message || error),
+        })
+      }
+      return
+    }
+
+    if (method === "GET" && requestPath.startsWith('/api/stripe/checkout-session/')) {
+      const sessionId = decodeURIComponent(requestPath.replace('/api/stripe/checkout-session/', ''))
+
+      if (!sessionId) {
+        sendJson(res, 400, { message: 'session_id manquant.' })
+        return
+      }
+
+      if (!stripeSecretKey) {
+        sendJson(res, 503, { message: 'STRIPE_SECRET manquante pour verifier le paiement.' })
+        return
+      }
+
+      try {
+        const session = await stripeGet(`/checkout/sessions/${encodeURIComponent(sessionId)}`)
+        sendJson(res, 200, {
+          id: session?.id,
+          status: session?.status,
+          payment_status: session?.payment_status,
+          amount_total: session?.amount_total,
+          currency: session?.currency,
+          customer_email: session?.customer_details?.email || session?.customer_email || null,
+        })
+      } catch (error) {
+        sendJson(res, 502, {
+          message: 'Verification Stripe echouee.',
+          details: String(error?.message || error),
+        })
+      }
+      return
     }
 
     const safePath = toSafePath(req.url || "/");

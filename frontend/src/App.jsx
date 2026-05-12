@@ -7,6 +7,7 @@ import CompanyInfoPage from './pages/CompanyInfoPage'
 import DepositairePage from './pages/DepositairePage'
 import FinalDossierPage from './pages/FinalDossierPage'
 import StripePage from './pages/StripePage'
+import StripeResultPage from './pages/StripeResultPage'
 
 const navItems = [
   { to: '/stripe', label: '1. Paiement Stripe' },
@@ -138,6 +139,7 @@ function AppLayout() {
               <Route path="/" element={<Navigate to="/auth" replace />} />
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/stripe" element={<StripePage />} />
+              <Route path="/stripe/result" element={<StripeResultPage />} />
               <Route path="/company" element={<CompanyInfoPage />} />
               <Route path="/depositaire" element={<DepositairePage />} />
               <Route path="/adresse-info" element={<AddressInfoPage />} />
