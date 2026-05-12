@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
@@ -58,10 +58,14 @@ function CompanyInfoPage() {
   }, [])
 
   const [enterpriseNumber, setEnterpriseNumber] = useState('')
-  const [langue, setLangue] = useState('fr')
+  const [langue, setLangue] = useState(localStorage.getItem('aktly_files_language') || 'fr')
   const [companyData, setCompanyData] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+
+  useEffect(() => {
+    localStorage.setItem('aktly_files_language', langue)
+  }, [langue])
 
   const onSearchCompany = async (event) => {
     event.preventDefault()

@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import AuthPage from './pages/AuthPage'
 import AddressInfoPage from './pages/AddressInfoPage'
@@ -22,11 +23,46 @@ function AppLayout() {
   const navigate = useNavigate()
   const currentStep = getStepIndex(location.pathname)
   const isAuthPage = location.pathname === '/auth'
+  const [uiLanguage, setUiLanguage] = useState(localStorage.getItem('aktly_ui_language') || 'fr')
+  const [showFilesLangPrompt, setShowFilesLangPrompt] = useState(false)
+  const [filesLanguage, setFilesLanguage] = useState(localStorage.getItem('aktly_files_language') || 'fr')
+  const [pendingRoute, setPendingRoute] = useState('')
+
+  useEffect(() => {
+    if (location.pathname === '/company' && !localStorage.getItem('aktly_files_language')) {
+      setShowFilesLangPrompt(true)
+      setPendingRoute('')
+    }
+  }, [location.pathname])
 
   const onLogout = () => {
     localStorage.clear()
     sessionStorage.clear()
     navigate('/auth')
+  }
+
+  const onChangeUiLanguage = (event) => {
+    const next = event.target.value
+    setUiLanguage(next)
+    localStorage.setItem('aktly_ui_language', next)
+  }
+
+  const onSelectFilesLanguage = () => {
+    localStorage.setItem('aktly_files_language', filesLanguage)
+    setShowFilesLangPrompt(false)
+
+    if (pendingRoute) {
+      navigate(pendingRoute)
+      setPendingRoute('')
+    }
+  }
+
+  const onStepClick = (event, route) => {
+    if (route === '/company' && !localStorage.getItem('aktly_files_language')) {
+      event.preventDefault()
+      setPendingRoute('/company')
+      setShowFilesLangPrompt(true)
+    }
   }
 
   return (
@@ -52,6 +88,7 @@ function AppLayout() {
                   <Link
                     key={item.to}
                     to={item.to}
+                    onClick={(event) => onStepClick(event, item.to)}
                     className={`step-pill rounded-full border px-3 py-1.5 text-sm transition ${
                       active
                         ? 'border-emerald-300 bg-emerald-300/15 text-emerald-200'
@@ -65,10 +102,21 @@ function AppLayout() {
                 )
               })}
               </nav>
+              <label className="ml-auto flex items-center gap-2 rounded-full border border-slate-600 px-3 py-1.5 text-xs text-slate-200">
+                <span>Langue UI</span>
+                <select
+                  value={uiLanguage}
+                  onChange={onChangeUiLanguage}
+                  className="rounded-md bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none"
+                >
+                  <option value="fr">Francais</option>
+                  <option value="nl">Nederlands</option>
+                </select>
+              </label>
               <button
                 type="button"
                 onClick={onLogout}
-                className="wow-btn ml-auto rounded-full border border-rose-300/60 bg-gradient-to-r from-rose-500 to-orange-400 px-4 py-1.5 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 hover:from-rose-400 hover:to-orange-300"
+                className="wow-btn rounded-full border border-rose-300/60 bg-gradient-to-r from-rose-500 to-orange-400 px-4 py-1.5 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 hover:from-rose-400 hover:to-orange-300"
               >
                 Deconnexion
               </button>
@@ -98,6 +146,53 @@ function AppLayout() {
           </motion.div>
         </AnimatePresence>
       </section>
+
+      {showFilesLangPrompt && !isAuthPage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+            <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Etape 2</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-100">Choisir la langue des fichiers</h3>
+            <p className="mt-2 text-sm text-slate-300">
+              Cette langue controle les fichiers generes par la suite.
+            </p>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setFilesLanguage('fr')}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+                  filesLanguage === 'fr'
+                    ? 'border-amber-300 bg-amber-300/15 text-amber-100'
+                    : 'border-slate-600 text-slate-300 hover:border-amber-300/50'
+                }`}
+              >
+                Francais
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilesLanguage('nl')}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+                  filesLanguage === 'nl'
+                    ? 'border-amber-300 bg-amber-300/15 text-amber-100'
+                    : 'border-slate-600 text-slate-300 hover:border-amber-300/50'
+                }`}
+              >
+                Nederlands
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onSelectFilesLanguage}
+                className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300"
+              >
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

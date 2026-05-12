@@ -111,9 +111,6 @@ function AuthPage() {
         variants={cardReveal}
         className="wow-panel rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-emerald-900/10"
       >
-        <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">
-          Authentification reelle
-        </p>
         <h2 className="mt-3 text-3xl font-bold">Login / Sign up</h2>
         <p className="mt-2 max-w-lg text-slate-300">
           Connecte-toi ou cree un compte pour continuer vers le paiement Stripe.
