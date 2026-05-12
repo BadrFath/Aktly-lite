@@ -67,6 +67,18 @@ function CompanyInfoPage() {
     localStorage.setItem('aktly_files_language', langue)
   }, [langue])
 
+  useEffect(() => {
+    const onFilesLanguageChanged = (event) => {
+      const nextLang = event?.detail === 'nl' ? 'nl' : 'fr'
+      setLangue(nextLang)
+    }
+
+    window.addEventListener('aktly-files-language-changed', onFilesLanguageChanged)
+    return () => {
+      window.removeEventListener('aktly-files-language-changed', onFilesLanguageChanged)
+    }
+  }, [])
+
   const onSearchCompany = async (event) => {
     event.preventDefault()
     const normalized = enterpriseNumber.replace(/\D+/g, '')
@@ -141,9 +153,6 @@ function CompanyInfoPage() {
           Page 2 - Identification entreprise
         </p>
         <h2 className="mt-3 text-3xl font-bold">Informations de la societe</h2>
-        <p className="mt-2 text-slate-300">
-          Ecran similaire au flux Legakte pour la recherche d entreprise.
-        </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSearchCompany}>
           <label className="block text-sm font-medium text-slate-200">

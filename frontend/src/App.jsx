@@ -95,6 +95,7 @@ function AppLayout() {
 
   const onSelectFilesLanguage = () => {
     localStorage.setItem('aktly_files_language', filesLanguage)
+    window.dispatchEvent(new CustomEvent('aktly-files-language-changed', { detail: filesLanguage }))
     setShowFilesLangPrompt(false)
 
     if (pendingRoute) {
