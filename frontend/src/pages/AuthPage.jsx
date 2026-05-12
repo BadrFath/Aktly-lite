@@ -26,6 +26,7 @@ function AuthPage() {
   const onSubmit = async (event) => {
     event.preventDefault()
     const endpoint = mode === 'signup' ? signupEndpoint : loginEndpoint
+    const normalizedEmail = form.email.trim().toLowerCase()
 
     if (!endpoint) {
       setErrorMessage('Configuration auth manquante. Verifie VITE_AUTH_LOGIN_ENDPOINT et VITE_AUTH_SIGNUP_ENDPOINT.')
@@ -49,8 +50,8 @@ function AuthPage() {
         },
         credentials: 'include',
         body: JSON.stringify({
-          name: form.fullName,
-          email: form.email,
+          name: form.fullName.trim(),
+          email: normalizedEmail,
           password: form.password,
           ...(mode === 'signup' ? { password_confirmation: form.confirmPassword } : {}),
         }),
@@ -77,8 +78,8 @@ function AuthPage() {
       localStorage.setItem(
         'aktly_user',
         JSON.stringify({
-          name: user?.name || form.fullName,
-          email: user?.email || form.email,
+          name: user?.name || form.fullName.trim() || 'Utilisateur Lite',
+          email: user?.email || normalizedEmail,
           mode,
         }),
       )
@@ -149,7 +150,7 @@ function AuthPage() {
             <input
               type="text"
               name="fullName"
-              required
+              required={mode === 'signup'}
               value={form.fullName}
               onChange={onChange}
               className="wow-input mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-300"

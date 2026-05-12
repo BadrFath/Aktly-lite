@@ -10,6 +10,7 @@ const dataDir = path.resolve(".data");
 const usersFile = path.join(dataDir, "users.json");
 const authLoginUrl = (process.env.AUTH_LOGIN_URL || "").trim();
 const authSignupUrl = (process.env.AUTH_SIGNUP_URL || "").trim();
+const useRemoteAuth = Boolean(authLoginUrl && authSignupUrl);
 const veriffSessionUrl = (process.env.VERIFF_SESSION_URL || "").trim();
 const veriffNotifyUrl = (process.env.VERIFF_NOTIFY_URL || "").trim();
 const legakteBearerToken = (process.env.LEGAKTE_BEARER_TOKEN || "").trim();
@@ -443,7 +444,7 @@ const server = http.createServer(async (req, res) => {
     const requestPath = (req.url || "/").split("?")[0];
 
     if (method === "POST" && requestPath === "/api/auth/login") {
-      if (authLoginUrl) {
+      if (useRemoteAuth) {
         await proxyAuth(req, res, authLoginUrl);
       } else {
         await handleLocalLogin(req, res);
@@ -452,7 +453,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === "POST" && requestPath === "/api/auth/signup") {
-      if (authSignupUrl) {
+      if (useRemoteAuth) {
         await proxyAuth(req, res, authSignupUrl);
       } else {
         await handleLocalSignup(req, res);

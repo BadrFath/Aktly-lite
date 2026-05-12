@@ -21,6 +21,7 @@ function StripePage() {
   const [expiry, setExpiry] = useState('')
   const [cvc, setCvc] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [isRedirecting, setIsRedirecting] = useState(false)
 
   const money = useMemo(() => {
     return {
@@ -30,14 +31,42 @@ function StripePage() {
     }
   }, [])
 
-  const onPay = (event) => {
+  const resolveStripeUrl = async () => {
+    const direct = stripePaymentLink.trim()
+    if (direct) {
+      return direct.startsWith('http://') || direct.startsWith('https://')
+        ? direct
+        : `https://${direct}`
+    }
+
+    const response = await fetch('/api/stripe/payment-link', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}))
+      throw new Error(payload?.message || `HTTP ${response.status}`)
+    }
+
+    const payload = await response.json().catch(() => ({}))
+    const runtimeUrl = (payload?.url ?? '').trim()
+
+    if (!runtimeUrl) {
+      throw new Error('Lien Stripe indisponible.')
+    }
+
+    return runtimeUrl.startsWith('http://') || runtimeUrl.startsWith('https://')
+      ? runtimeUrl
+      : `https://${runtimeUrl}`
+  }
+
+  const onPay = async (event) => {
     event.preventDefault()
     setErrorMessage('')
-
-    if (!stripePaymentLink) {
-      setErrorMessage('Configuration Stripe manquante. Verifie VITE_STRIPE_PAYMENT_LINK sur Render.')
-      return
-    }
+    setIsRedirecting(true)
 
     const paymentPayload = {
       pack: {
@@ -45,7 +74,7 @@ function StripePage() {
         title: pack.title,
         credits: pack.credits,
         price: money.display,
-        currency,
+        currency: 'EUR',
         monthly: true,
       },
       email,
@@ -57,9 +86,18 @@ function StripePage() {
       JSON.stringify(paymentPayload),
     )
 
-    localStorage.setItem('aktly_step_2', 'pending_live_payment')
-    localStorage.setItem('aktly_payment_live_redirect', 'true')
-    window.location.assign(stripePaymentLink)
+    try {
+      const paymentUrl = await resolveStripeUrl()
+      localStorage.setItem('aktly_step_2', 'pending_live_payment')
+      localStorage.setItem('aktly_payment_live_redirect', 'true')
+      window.location.assign(paymentUrl)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      setErrorMessage(
+        `Impossible d ouvrir Stripe${message ? `: ${message}` : '. Verifie la configuration Stripe sur Render.'}`,
+      )
+      setIsRedirecting(false)
+    }
   }
 
   return (
@@ -306,9 +344,10 @@ function StripePage() {
             </button>
             <button
               type="submit"
+              disabled={isRedirecting}
               className="rounded-xl bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-emerald-300/50 transition hover:-translate-y-0.5 hover:shadow-xl"
             >
-              Payer en EUR sur Stripe
+              {isRedirecting ? 'Ouverture de Stripe...' : 'Payer en EUR sur Stripe'}
             </button>
           </div>
           <p className="text-sm text-slate-500">
