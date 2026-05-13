@@ -13,6 +13,7 @@ const privilegedEmails = new Set(["badrfath16@gmail.com", "contact@legakte.be"])
 const authLoginUrl = (process.env.AUTH_LOGIN_URL || "").trim();
 const authSignupUrl = (process.env.AUTH_SIGNUP_URL || "").trim();
 const useRemoteAuth = Boolean(authLoginUrl && authSignupUrl);
+const authAutoProvision = String(process.env.AUTH_AUTO_PROVISION || "true").trim().toLowerCase() !== "false";
 const veriffSessionUrl = (process.env.VERIFF_SESSION_URL || "").trim();
 const veriffNotifyUrl = (process.env.VERIFF_NOTIFY_URL || "").trim();
 const legakteBearerToken = (process.env.LEGAKTE_BEARER_TOKEN || "").trim();
@@ -598,6 +599,7 @@ async function handleLocalLogin(req, res) {
   const payload = await readJsonBody(req);
   const email = normalizeEmail(payload?.email || "");
   const password = String(payload?.password || "");
+  const fallbackName = String(payload?.name || "").trim();
 
   if (!email || !password) {
     sendJson(res, 422, { message: "email et password sont obligatoires." });
@@ -605,7 +607,20 @@ async function handleLocalLogin(req, res) {
   }
 
   const users = await readUsers();
-  const user = users.find((item) => item.email === email);
+  let user = users.find((item) => item.email === email);
+
+  if (!user && authAutoProvision) {
+    user = {
+      id: crypto.randomUUID(),
+      name: fallbackName || email.split('@')[0] || 'Utilisateur Lite',
+      email,
+      passwordHash: hashPassword(password),
+      createdAt: new Date().toISOString(),
+    };
+    users.push(user);
+    await writeUsers(users);
+  }
+
   if (!user || user.passwordHash !== hashPassword(password)) {
     sendJson(res, 401, { message: "Identifiants invalides." });
     return;

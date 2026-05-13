@@ -27,6 +27,7 @@ function AuthPage() {
     event.preventDefault()
     const endpoint = mode === 'signup' ? signupEndpoint : loginEndpoint
     const normalizedEmail = form.email.trim().toLowerCase()
+    const trimmedName = form.fullName.trim()
 
     if (!endpoint) {
       setErrorMessage('Configuration auth manquante. Verifie VITE_AUTH_LOGIN_ENDPOINT et VITE_AUTH_SIGNUP_ENDPOINT.')
@@ -42,6 +43,19 @@ function AuthPage() {
     setErrorMessage('')
 
     try {
+      const requestBody =
+        mode === 'signup'
+          ? {
+              name: trimmedName,
+              email: normalizedEmail,
+              password: form.password,
+              password_confirmation: form.confirmPassword,
+            }
+          : {
+              email: normalizedEmail,
+              password: form.password,
+            }
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -49,12 +63,7 @@ function AuthPage() {
           Accept: 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({
-          name: form.fullName.trim(),
-          email: normalizedEmail,
-          password: form.password,
-          ...(mode === 'signup' ? { password_confirmation: form.confirmPassword } : {}),
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -83,7 +92,7 @@ function AuthPage() {
       localStorage.setItem(
         'aktly_user',
         JSON.stringify({
-          name: user?.name || form.fullName.trim() || 'Utilisateur Lite',
+          name: user?.name || trimmedName || normalizedEmail.split('@')[0] || 'Utilisateur Lite',
           email: user?.email || normalizedEmail,
           mode,
         }),
