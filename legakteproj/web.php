@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\LiteStripePageController;
 use App\Http\Controllers\LiteEnterpriseIdentificationPageController;
 use App\Http\Controllers\LiteCheckoutController;
+use App\Http\Controllers\LiteDossierController;
 use App\Http\Controllers\LiteInvoiceController;
 use App\Http\Controllers\LiteKboController;
 use App\Http\Controllers\LiteDemandeController;
@@ -22,6 +23,9 @@ Route::middleware('auth:sanctum')->prefix('lite')->group(function () {
         ->name('lite.enterprise-identification.search');
     Route::post('/identification-entreprise/demandes', [LiteDemandeController::class, 'store'])
         ->name('lite.enterprise-identification.demandes.store');
+
+    Route::post('/dossier/generate/{document}', [LiteDossierController::class, 'generate'])
+        ->name('lite.dossier.generate');
 });
 
 Route::post('/lite/stripe/webhook', [LiteCheckoutController::class, 'handleWebhook'])->name('lite.stripe.webhook');
