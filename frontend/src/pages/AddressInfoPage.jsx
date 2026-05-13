@@ -10,12 +10,14 @@ function AddressInfoPage() {
     return raw ? JSON.parse(raw) : null
   }, [])
 
+  const currentAddress = companyData?.addresses?.[0] ?? {}
+
   const [form, setForm] = useState({
-    rue: '',
-    numero: '',
-    boite: '',
-    codePostal: '',
-    commune: '',
+    rue: currentAddress?.street ?? '',
+    numero: currentAddress?.houseNumber ?? '',
+    boite: currentAddress?.box ?? '',
+    codePostal: currentAddress?.postalCode ?? '',
+    commune: currentAddress?.municipality ?? '',
     dateChangement: '',
     dateAgIdentique: true,
     dateAssembleeGenerale: '',
@@ -206,6 +208,7 @@ function AddressInfoPage() {
           </p>
           <p>Numero: {companyData?.number ?? '-'}</p>
           <p>Adresse: {companyData?.address ?? '-'}</p>
+          <p>Forme juridique: {companyData?.enterprise?.legalForm ?? '-'}</p>
         </div>
         <p className="mt-3 text-xs text-slate-400">
           Source de reference etape 5: E:\Mohammed el yakoubi\Legakte

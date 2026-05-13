@@ -1,34 +1,43 @@
 import { motion } from 'framer-motion'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
 const dossierFiles = [
   {
     title: 'Formulaire 1',
+    documentKey: 'formulaire1entr',
     viewUrl: '/legakte-docs/formulaire1entr.pdf',
-    downloadUrl: '/legakte-docs/formulaire1entr.pdf',
+    fallbackDownloadUrl: '/legakte-docs/formulaire1entr.pdf',
   },
   {
     title: 'Formulaire 2',
+    documentKey: 'formulaire2entr',
     viewUrl: '/legakte-docs/formulaire2entr.pdf',
-    downloadUrl: '/legakte-docs/formulaire2entr.pdf',
+    fallbackDownloadUrl: '/legakte-docs/formulaire2entr.pdf',
   },
   {
     title: "Attestation d'identite modele 1",
+    documentKey: 'attestation-identite',
     viewUrl: '/legakte-docs/attestation-identite-modele-1-fr.pdf',
-    downloadUrl: '/legakte-docs/attestation-identite-modele-1-fr.pdf',
+    fallbackDownloadUrl: '/legakte-docs/attestation-identite-modele-1-fr.pdf',
   },
   {
     title: "Proces-verbal de l'assemblee generale",
+    documentKey: 'pv-assemblee-generale',
     viewUrl: '/legakte-docs/pv-assemblee-generale.txt',
-    downloadUrl: '/legakte-docs/pv-assemblee-generale.docx',
+    fallbackDownloadUrl: '/legakte-docs/pv-assemblee-generale.docx',
   },
 ]
 
-function FinalDossierPage({ privilegedAccess = false }) {
+const dossierGenerateBaseEndpoint =
+  import.meta.env.VITE_LEGAKTE_DOSSIER_GENERATE_ENDPOINT ??
+  'http://127.0.0.1:8000/lite/dossier/generate'
+
+const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
+
+function FinalDossierPage() {
   const navigate = useNavigate()
-  const isPaymentVerified = localStorage.getItem('aktly_payment_verified') === 'true'
 
   const payment = useMemo(() => {
     const raw = localStorage.getItem('aktly_payment')
@@ -45,34 +54,79 @@ function FinalDossierPage({ privilegedAccess = false }) {
     return raw ? JSON.parse(raw) : null
   }, [])
 
+  const depositaire = useMemo(() => {
+    const raw = localStorage.getItem('aktly_depositaire')
+    return raw ? JSON.parse(raw) : null
+  }, [])
+
+  const [downloadError, setDownloadError] = useState('')
+  const [downloadingKey, setDownloadingKey] = useState('')
+
+  const companyData = useMemo(() => {
+    const raw = localStorage.getItem('aktly_company_data')
+    return raw ? JSON.parse(raw) : null
+  }, [])
+
   const onPrintDossier = () => {
     window.print()
   }
 
-  if (!isPaymentVerified && !privilegedAccess) {
-    return (
-      <motion.div className="page-grid" variants={pageContainer} initial="hidden" animate="visible">
-        <motion.article
-          variants={cardReveal}
-          className="wow-panel rounded-3xl border border-rose-300/30 bg-slate-900/70 p-6 shadow-xl shadow-rose-900/20"
-        >
-          <p className="text-xs uppercase tracking-[0.2em] text-rose-300">Acces bloque</p>
-          <h2 className="mt-3 text-3xl font-bold">Paiement Stripe non confirme</h2>
-          <p className="mt-3 text-slate-200">
-            Les formulaires finaux ne sont pas charges tant que le paiement n est pas confirme.
-          </p>
-          <div className="mt-5 flex gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/stripe')}
-              className="wow-btn rounded-xl bg-emerald-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-emerald-300"
-            >
-              Aller au paiement Stripe
-            </button>
-          </div>
-        </motion.article>
-      </motion.div>
-    )
+  const triggerStaticDownload = (url) => {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = ''
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const onDownloadGeneratedDocument = async (file) => {
+    setDownloadError('')
+    setDownloadingKey(file.documentKey)
+
+    try {
+      const endpoint = `${dossierGenerateBaseEndpoint}/${file.documentKey}`
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          company_data: companyData ?? {},
+          address_info: addressInfo ?? {},
+          depositaire: depositaire ?? {},
+          user: user ?? {},
+          payment: payment ?? {},
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const disposition = response.headers.get('content-disposition') || ''
+      const matchedFileName = disposition.match(/filename="?([^";]+)"?/i)
+      const fileName = matchedFileName?.[1] || `${file.documentKey}.txt`
+
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      setDownloadError(
+        'Generation serveur indisponible. Fichier statique telecharge a la place.',
+      )
+      triggerStaticDownload(file.fallbackDownloadUrl)
+    } finally {
+      setDownloadingKey('')
+    }
   }
 
   return (
@@ -117,7 +171,23 @@ function FinalDossierPage({ privilegedAccess = false }) {
         </section>
 
         <section className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
+          <h3 className="text-lg font-semibold text-slate-100">Informations entreprise pre-remplies</h3>
+          <div className="mt-2 space-y-1 text-sm text-slate-300">
+            <p>Entreprise: {companyData?.company_name ?? '-'}</p>
+            <p>Numero BCE: {companyData?.number ?? '-'}</p>
+            <p>Adresse BCE: {companyData?.address ?? '-'}</p>
+            <p>Forme juridique: {companyData?.enterprise?.legalForm ?? '-'}</p>
+            <p>Date de debut: {companyData?.enterprise?.startDate ?? '-'}</p>
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
           <h3 className="text-lg font-semibold text-slate-100">Dossier complet (visuel et impression)</h3>
+          {downloadError && (
+            <p className="mt-2 rounded-lg border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
+              {downloadError}
+            </p>
+          )}
           <div className="mt-3 rounded-2xl bg-slate-100 p-3 sm:p-4">
             <div className="grid gap-3 sm:grid-cols-2">
             {dossierFiles.map((file) => (
@@ -136,14 +206,15 @@ function FinalDossierPage({ privilegedAccess = false }) {
                     <span aria-hidden="true">◉</span>
                     Voir
                   </a>
-                  <a
-                    href={file.downloadUrl}
-                    download
+                  <button
+                    type="button"
+                    onClick={() => onDownloadGeneratedDocument(file)}
+                    disabled={downloadingKey === file.documentKey}
                     className="wow-btn inline-flex items-center gap-2 rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-400"
                   >
                     <span aria-hidden="true">⬇</span>
-                    Telecharger
-                  </a>
+                    {downloadingKey === file.documentKey ? 'Generation...' : 'Telecharger'}
+                  </button>
                 </div>
               </article>
             ))}

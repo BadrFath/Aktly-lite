@@ -1,11 +1,34 @@
 import { motion } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const searchEndpoint = (
-  import.meta.env.VITE_LEGAKTE_SEARCH_ENDPOINT ?? '/api/legakte/identification-entreprise/search'
-).trim()
+const legakteCompanies = {
+  '1022158878': {
+    name: 'Entreprise 1022158878',
+    address: 'Drève Richelle 161, 1410 Waterloo',
+  },
+  '0834252359': {
+    name: 'Entreprise 0834252359',
+    address: 'Avenue Louise 54, 1050 Bruxelles',
+  },
+  '0793532155': {
+    name: 'Entreprise 0793532155',
+    address: 'Boulevard du Souverain 25, 1170 Bruxelles',
+  },
+  '0544946196': {
+    name: 'Entreprise 0544946196',
+    address: 'Rue Royale 120, 1000 Bruxelles',
+  },
+  '0478743894': {
+    name: 'Entreprise 0478743894',
+    address: 'Chaussée de Charleroi 80, 1060 Saint-Gilles',
+  },
+}
+
+const searchEndpoint =
+  import.meta.env.VITE_LEGAKTE_SEARCH_ENDPOINT ??
+  'http://127.0.0.1:8000/lite/identification-entreprise/search'
 
 const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
 
@@ -24,16 +47,39 @@ const getDescriptionValue = (items, preferredLang) => {
 
 const normalizeCompanyData = (payload, fallbackNumber, langue) => {
   const apiNumber = payload?.number ? String(payload.number) : fallbackNumber
+  const seed = legakteCompanies[apiNumber]
   const denominationDescriptions = payload?.denomination?.[0]?.description
   const statusDescriptions = payload?.juridicalSituation?.status?.description
+  const firstAddress = payload?.addresses?.[0] ?? null
+
+  const normalizedAddress = {
+    street: firstAddress?.street ?? '',
+    houseNumber: firstAddress?.houseNumber ?? '',
+    box: firstAddress?.box ?? '',
+    postalCode: firstAddress?.postalCode ?? '',
+    municipality: firstAddress?.municipality ?? '',
+    country: firstAddress?.country ?? 'Belgique',
+    full:
+      firstAddress?.full ??
+      payload?.address ??
+      seed?.address ??
+      'Adresse non disponible',
+  }
 
   return {
     lang_entre: payload?.lang_entre ?? langue,
     number: apiNumber,
     company_name:
       getDescriptionValue(denominationDescriptions, langue) ??
+      seed?.name ??
       `Entreprise ${apiNumber}`,
-    address: payload?.address ?? payload?.headOfficeAddress ?? 'Adresse non disponible',
+    address: normalizedAddress.full,
+    addresses: [normalizedAddress],
+    enterprise: {
+      legalForm: payload?.enterprise?.legalForm ?? null,
+      startDate: payload?.enterprise?.startDate ?? null,
+      vatLiable: payload?.enterprise?.vatLiable ?? null,
+    },
     typeOfEnterprise: payload?.typeOfEnterprise ?? 'ELP',
     juridicalSituation: {
       status: {
@@ -58,35 +104,14 @@ function CompanyInfoPage() {
   }, [])
 
   const [enterpriseNumber, setEnterpriseNumber] = useState('')
-  const [langue, setLangue] = useState(localStorage.getItem('aktly_files_language') || 'fr')
+  const [langue, setLangue] = useState('fr')
   const [companyData, setCompanyData] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
-  useEffect(() => {
-    localStorage.setItem('aktly_files_language', langue)
-  }, [langue])
-
-  useEffect(() => {
-    const onFilesLanguageChanged = (event) => {
-      const nextLang = event?.detail === 'nl' ? 'nl' : 'fr'
-      setLangue(nextLang)
-    }
-
-    window.addEventListener('aktly-files-language-changed', onFilesLanguageChanged)
-    return () => {
-      window.removeEventListener('aktly-files-language-changed', onFilesLanguageChanged)
-    }
-  }, [])
-
   const onSearchCompany = async (event) => {
     event.preventDefault()
     const normalized = enterpriseNumber.replace(/\D+/g, '')
-
-    if (!searchEndpoint) {
-      setErrorMessage('Configuration Legakte manquante. Verifie VITE_LEGAKTE_SEARCH_ENDPOINT.')
-      return
-    }
 
     setErrorMessage('')
     setIsLoading(true)
@@ -106,17 +131,7 @@ function CompanyInfoPage() {
       })
 
       if (!response.ok) {
-        const rawText = await response.text().catch(() => '')
-        let apiMessage = ''
-
-        try {
-          const parsed = rawText ? JSON.parse(rawText) : {}
-          apiMessage = parsed?.message || parsed?.details || ''
-        } catch {
-          apiMessage = rawText
-        }
-
-        throw new Error(apiMessage || `HTTP ${response.status}`)
+        throw new Error(`HTTP ${response.status}`)
       }
 
       const payload = await response.json()
@@ -124,11 +139,18 @@ function CompanyInfoPage() {
       setCompanyData(normalizedData)
       localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
       localStorage.setItem('aktly_step_3', 'done')
-    } catch (error) {
-      setCompanyData(null)
-      const message = error instanceof Error ? error.message : ''
+    } catch {
+      const fallbackPayload = {
+        number: normalized,
+        lang_entre: langue,
+      }
+
+      const normalizedData = normalizeCompanyData(fallbackPayload, normalized, langue)
+      setCompanyData(normalizedData)
+      localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
+      localStorage.setItem('aktly_step_3', 'done')
       setErrorMessage(
-        `Recherche Legakte echouee${message ? `: ${message}` : '. Verifie le bearer token et l endpoint Render.'}`,
+        'API Legakte indisponible ou non authentifiee. Donnees locales affichees.',
       )
     } finally {
       setIsLoading(false)
@@ -137,6 +159,8 @@ function CompanyInfoPage() {
 
   const statusLabel = companyData?.juridicalSituation?.status?.description?.[0]?.value
   const denomination = companyData?.company_name
+  const legalForm = companyData?.enterprise?.legalForm
+  const startDate = companyData?.enterprise?.startDate
 
   return (
     <motion.div
@@ -153,6 +177,9 @@ function CompanyInfoPage() {
           Page 2 - Identification entreprise
         </p>
         <h2 className="mt-3 text-3xl font-bold">Informations de la societe</h2>
+        <p className="mt-2 text-slate-300">
+          Ecran similaire au flux Legakte pour la recherche d entreprise.
+        </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSearchCompany}>
           <label className="block text-sm font-medium text-slate-200">
@@ -227,6 +254,9 @@ function CompanyInfoPage() {
             </div>
             <p className="mt-3 text-xs text-slate-400">
               Statut: {statusLabel} | Type: {companyData.typeOfEnterprise}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Forme juridique: {legalForm || '-'} | Date de debut: {startDate || '-'}
             </p>
 
             <div className="mt-4 flex items-center justify-between gap-3">
