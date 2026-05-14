@@ -54,7 +54,7 @@ function DepositairePage() {
   const companyDataRaw = localStorage.getItem('aktly_company_data')
   const companyData = companyDataRaw ? JSON.parse(companyDataRaw) : null
   const enterpriseNumber = String(companyData?.number ?? '').replace(/\D+/g, '')
-  const [type, setType] = useState('comptable')
+  const depositaireType = 'comptable'
   const [dirigeants, setDirigeants] = useState([])
   const [selectedDirigeantId, setSelectedDirigeantId] = useState('')
   const [gsm, setGsm] = useState('')
@@ -212,7 +212,7 @@ function DepositairePage() {
     setIsSendingVeriff(true)
 
     const payload = {
-      depositaire_type: type,
+      depositaire_type: depositaireType,
       dirigeant: selectedDirigeant,
       gsm,
       sentAt: new Date().toISOString(),
@@ -280,18 +280,6 @@ function DepositairePage() {
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSendVeriff}>
-          <label className="block text-sm font-medium text-slate-200">
-            Type de depositaire
-            <select
-              value={type}
-              onChange={(event) => setType(event.target.value)}
-              className="wow-select mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 outline-none transition focus:border-fuchsia-300"
-            >
-              <option value="comptable">Comptable</option>
-              <option value="gestionnaire">Gestionnaire</option>
-            </select>
-          </label>
-
           <label className="block text-sm font-medium text-slate-200">
             Dirigeant delegue
             <select
