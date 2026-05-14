@@ -31,6 +31,12 @@ const stripePaymentLinkRuntime = (
   process.env.VITE_STRIPE_PAYMENT_LINK ||
   ""
 ).trim();
+const bceSoapServiceUrl = (process.env.BCE_SOAP_URL || "https://kbopub.economie.fgov.be/kbopubws110000/services/wsKBOPub").trim();
+const bceSoapAction = (process.env.BCE_SOAP_ACTION || "http://fgov.economie.be/kbopub/ReadEnterprise").trim();
+const bceWsUsername = (process.env.BCE_WS_USERNAME || "wsop4830").trim();
+const bceWsPassword = (process.env.BCE_WS_PASSWORD || "cBRABbE6qmvvFWBEnc6RJJVd").trim();
+const bceCacheTtlMs = Number(process.env.BCE_CACHE_TTL_MS || 5 * 60 * 1000);
+const bceCompanyCache = new Map();
 
 // Source: C:/Users/hp/Downloads/Compressed/Aktly-main/storage/logs/laravel.log
 // (entries "response bce" for enterprise 1022158878)
@@ -397,6 +403,290 @@ function makeCompanyPayload(enterpriseNumber, langue) {
       },
     },
   };
+}
+
+function xmlEscape(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function xmlDecode(value) {
+  return String(value || "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+}
+
+function stripXmlTags(value) {
+  return xmlDecode(String(value || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function firstTagValue(xml, tagName) {
+  const match = String(xml || "").match(new RegExp(`<(?:\\w+:)?${tagName}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tagName}>`, "i"));
+  return match ? stripXmlTags(match[1]) : "";
+}
+
+function allTagBlocks(xml, tagName) {
+  return Array.from(String(xml || "").matchAll(new RegExp(`<(?:\\w+:)?${tagName}\\b[^>]*>[\\s\\S]*?<\\/(?:\\w+:)?${tagName}>`, "gi"))).map((m) => m[0]);
+}
+
+function pickDescriptionValue(xml, preferredLanguage) {
+  const descriptions = allTagBlocks(xml, "Description");
+  if (descriptions.length === 0) {
+    return firstTagValue(xml, "Value");
+  }
+
+  const wanted = String(preferredLanguage || "fr").toLowerCase();
+  for (const desc of descriptions) {
+    const lang = firstTagValue(desc, "Language").toLowerCase();
+    if (lang === wanted) {
+      const value = firstTagValue(desc, "Value");
+      if (value) {
+        return value;
+      }
+    }
+  }
+
+  for (const desc of descriptions) {
+    const value = firstTagValue(desc, "Value");
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function buildBceSoapEnvelope(enterpriseNumber, langue) {
+  const nonceBytes = crypto.randomBytes(16);
+  const nonceB64 = nonceBytes.toString("base64");
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + 5 * 60 * 1000);
+  const created = createdAt.toISOString();
+  const expires = expiresAt.toISOString();
+  const digestSource = Buffer.concat([
+    nonceBytes,
+    Buffer.from(created, "utf8"),
+    Buffer.from(String(bceWsPassword || ""), "utf8"),
+  ]);
+  const passwordDigest = crypto.createHash("sha1").update(digestSource).digest("base64");
+  const usernameTokenId = `UsernameToken-${crypto.randomUUID().toUpperCase()}`;
+  const timestampId = `TS-${crypto.randomUUID().toUpperCase()}`;
+  const language = String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:dat="http://economie.fgov.be/kbopub/webservices/v1/datamodel" xmlns:mes="http://economie.fgov.be/kbopub/webservices/v1/messages" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Header>
+    <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" soapenv:mustUnderstand="1">
+      <wsse:UsernameToken wsu:Id="${xmlEscape(usernameTokenId)}">
+        <wsse:Username>${xmlEscape(bceWsUsername)}</wsse:Username>
+        <wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${xmlEscape(passwordDigest)}</wsse:Password>
+        <wsse:Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">${xmlEscape(nonceB64)}</wsse:Nonce>
+        <wsu:Created>${xmlEscape(created)}</wsu:Created>
+      </wsse:UsernameToken>
+      <wsu:Timestamp wsu:Id="${xmlEscape(timestampId)}">
+        <wsu:Created>${xmlEscape(created)}</wsu:Created>
+        <wsu:Expires>${xmlEscape(expires)}</wsu:Expires>
+      </wsu:Timestamp>
+    </wsse:Security>
+    <mes:RequestContext>
+      <mes:Id>Aktly-lite</mes:Id>
+      <mes:Language>${xmlEscape(language)}</mes:Language>
+    </mes:RequestContext>
+  </soapenv:Header>
+  <soapenv:Body>
+    <mes:ReadEnterpriseRequest>
+      <dat:EnterpriseNumber>${xmlEscape(cleanNumber)}</dat:EnterpriseNumber>
+    </mes:ReadEnterpriseRequest>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+}
+
+function parseBceEnterpriseResponse(xml, enterpriseNumber, langue) {
+  const normalizedXml = String(xml || "");
+  if (!normalizedXml.trim()) {
+    throw new Error("Reponse BCE vide");
+  }
+
+  const faultString = firstTagValue(normalizedXml, "faultstring") || firstTagValue(normalizedXml, "Fault");
+  if (faultString && /fault|error|erreur|invalid|not authorized|unauthorized/i.test(faultString)) {
+    throw new Error(`BCE SOAP Fault: ${faultString}`);
+  }
+
+  const replyMatch = normalizedXml.match(/<(?:\w+:)?ReadEnterpriseReply\b[\s\S]*?<\/(?:\w+:)?ReadEnterpriseReply>/i);
+  if (!replyMatch) {
+    throw new Error("ReadEnterpriseReply introuvable dans la reponse BCE");
+  }
+
+  const replyXml = replyMatch[0];
+  const enterpriseMatch = replyXml.match(/<(?:\w+:)?Enterprise\b[\s\S]*?<\/(?:\w+:)?Enterprise>/i);
+  if (!enterpriseMatch) {
+    throw new Error("Noeud Enterprise introuvable dans la reponse BCE");
+  }
+
+  const enterpriseXml = enterpriseMatch[0];
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+
+  const number = firstTagValue(enterpriseXml, "Number").replace(/\D+/g, "") || cleanNumber;
+  const typeOfEnterprise = firstTagValue(enterpriseXml, "TypeOfEnterprise") || "ELP";
+  const periodXml = allTagBlocks(enterpriseXml, "Period")[0] || "";
+  const periodBegin = firstTagValue(periodXml, "Begin");
+  const juridicalFormXml = allTagBlocks(enterpriseXml, "JuridicalForm")[0] || "";
+  const legalForm = pickDescriptionValue(juridicalFormXml, langue) || null;
+  const juridicalSituationXml = allTagBlocks(enterpriseXml, "JuridicalSituation")[0] || "";
+  const statusXml = allTagBlocks(juridicalSituationXml, "Status")[0] || "";
+  const status = pickDescriptionValue(statusXml, langue) || (String(langue || "fr").toLowerCase() === "nl" ? "Actief" : "Actif");
+  const legalSituation = pickDescriptionValue(juridicalSituationXml, langue) || status;
+
+  const denominationXml = allTagBlocks(enterpriseXml, "Denomination")[0] || "";
+  const denomination = pickDescriptionValue(denominationXml, langue) || `Entreprise ${number}`;
+
+  const addressBlocks = allTagBlocks(enterpriseXml, "Address");
+  const selectedAddress = addressBlocks[0] || "";
+  const streetXml = allTagBlocks(selectedAddress, "Street")[0] || "";
+  const municipalityXml = allTagBlocks(selectedAddress, "Municipality")[0] || "";
+  const address = {
+    street: pickDescriptionValue(streetXml, langue),
+    houseNumber: firstTagValue(selectedAddress, "HouseNumber"),
+    box: firstTagValue(selectedAddress, "Box"),
+    postalCode: firstTagValue(selectedAddress, "Zipcode"),
+    municipality: pickDescriptionValue(municipalityXml, langue),
+    country: firstTagValue(selectedAddress, "Country") || "Belgique",
+  };
+  const fullAddress = [
+    [address.street, address.houseNumber].filter(Boolean).join(" "),
+    address.box ? `boite ${address.box}` : "",
+    [address.postalCode, address.municipality].filter(Boolean).join(" "),
+    address.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const functionBlocks = allTagBlocks(enterpriseXml, "Function");
+  const dirigeants = functionBlocks
+    .map((block, index) => {
+      const personXml = allTagBlocks(block, "Person")[0] || "";
+      const givenName = firstTagValue(personXml, "GivenName").trim();
+      const surname = firstTagValue(personXml, "Surname").trim();
+      if (!givenName && !surname) {
+        return null;
+      }
+
+      return {
+        id: `${number}-${index + 1}`,
+        demande_id: number || cleanNumber || "N/A",
+        given_name: givenName,
+        nom: surname,
+        role: pickDescriptionValue(block, langue) || "Administrateur",
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    company: {
+      lang_entre: String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr",
+      number,
+      denomination: [
+        {
+          description: [
+            { language: "fr", value: denomination },
+            { language: "nl", value: denomination },
+          ],
+        },
+      ],
+      address: fullAddress,
+      addresses: [
+        {
+          ...address,
+          full: fullAddress,
+        },
+      ],
+      enterprise: {
+        legalForm,
+        startDate: periodBegin || null,
+        vatLiable: null,
+        legalSituation,
+      },
+      typeOfEnterprise,
+      juridicalSituation: {
+        status: {
+          description: [{ language: String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr", value: status }],
+        },
+      },
+      source: "bce-soap",
+    },
+    dirigeants,
+  };
+}
+
+function getBceCacheKey(enterpriseNumber, langue) {
+  const number = String(enterpriseNumber || "").replace(/\D+/g, "");
+  const language = String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  return `${number}:${language}`;
+}
+
+function readBceCache(enterpriseNumber, langue) {
+  const key = getBceCacheKey(enterpriseNumber, langue);
+  const entry = bceCompanyCache.get(key);
+  if (!entry) {
+    return null;
+  }
+
+  if (Date.now() > entry.expiresAt) {
+    bceCompanyCache.delete(key);
+    return null;
+  }
+
+  return entry;
+}
+
+function writeBceCache(enterpriseNumber, langue, company, dirigeants) {
+  const key = getBceCacheKey(enterpriseNumber, langue);
+  bceCompanyCache.set(key, {
+    company,
+    dirigeants: Array.isArray(dirigeants) ? dirigeants : [],
+    expiresAt: Date.now() + Math.max(10_000, bceCacheTtlMs),
+  });
+}
+
+async function fetchBceSoapCompany(enterpriseNumber, langue) {
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+  if (!cleanNumber) {
+    throw new Error("Numero d'entreprise invalide");
+  }
+
+  const cached = readBceCache(cleanNumber, langue || "fr");
+  if (cached) {
+    return { company: cached.company, dirigeants: cached.dirigeants };
+  }
+
+  const soapEnvelope = buildBceSoapEnvelope(cleanNumber, langue || "fr");
+  const response = await fetch(bceSoapServiceUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/xml;charset=UTF-8",
+      SOAPAction: `"${bceSoapAction}"`,
+      Accept: "text/xml, application/xml",
+    },
+    body: soapEnvelope,
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`BCE SOAP HTTP ${response.status}`);
+  }
+
+  const parsed = parseBceEnterpriseResponse(body, cleanNumber, langue || "fr");
+  writeBceCache(cleanNumber, langue || "fr", parsed.company, parsed.dirigeants);
+  return parsed;
 }
 
 function mapAktlyMainCompanyPayload(enterpriseNumber, langue) {
@@ -835,17 +1125,23 @@ function splitNameFromEmail(email) {
 
 async function makeDirigeantsPayload(req, enterpriseNumber) {
   const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
-  const source = companyDirectoryFromAktlyMain[cleanNumber];
-  if (source?.dirigeants?.length) {
-    return {
-      data: source.dirigeants.map((row, index) => ({
-        id: `${cleanNumber}-${index + 1}`,
-        demande_id: cleanNumber || "N/A",
-        given_name: row.givenName,
-        nom: row.surname,
-        role: row.function || "Administrateur",
-      })),
-    };
+  const cacheFr = readBceCache(cleanNumber, "fr");
+  const cacheNl = readBceCache(cleanNumber, "nl");
+  const cachedDirigeants = cacheFr?.dirigeants?.length ? cacheFr.dirigeants : cacheNl?.dirigeants;
+
+  if (Array.isArray(cachedDirigeants) && cachedDirigeants.length > 0) {
+    return { data: cachedDirigeants };
+  }
+
+  if (cleanNumber) {
+    try {
+      const fromBce = await fetchBceSoapCompany(cleanNumber, "fr");
+      if (Array.isArray(fromBce?.dirigeants) && fromBce.dirigeants.length > 0) {
+        return { data: fromBce.dirigeants };
+      }
+    } catch {
+      // Keep existing fallback when BCE has no function data.
+    }
   }
 
   const token = extractAccessToken(req);
@@ -1093,16 +1389,15 @@ const server = http.createServer(async (req, res) => {
       }
 
       const payload = await readJsonBody(req);
-      const localPayload = mapAktlyMainCompanyPayload(payload?.enterprise_number, payload?.langue || "fr");
-      if (localPayload) {
-        sendJson(res, 200, localPayload);
-        return;
+      try {
+        const fromBce = await fetchBceSoapCompany(payload?.enterprise_number, payload?.langue || "fr");
+        sendJson(res, 200, fromBce.company);
+      } catch (error) {
+        sendJson(res, 502, {
+          message: "Impossible de recuperer les donnees BCE pour ce numero.",
+          details: String(error?.message || error),
+        });
       }
-
-      sendJson(res, 200, {
-        ...makeCompanyPayload(payload?.enterprise_number, payload?.langue),
-        warning: "Aucune donnee correspondante trouvee dans Aktly-main pour ce numero.",
-      });
       return;
     }
 
