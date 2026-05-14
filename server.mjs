@@ -1174,6 +1174,175 @@ function authorizeLegakte(req) {
   return authHeader === `Bearer ${legakteBearerToken}`;
 }
 
+function safeValue(value, fallback = "-") {
+  const text = value === null || value === undefined ? "" : String(value).trim();
+  return text || fallback;
+}
+
+function pickDescription(descriptions, preferredLang = "fr") {
+  if (!Array.isArray(descriptions)) {
+    return "";
+  }
+
+  const normalizedLang = String(preferredLang || "fr").toLowerCase();
+  const match = descriptions.find((item) => String(item?.language || "").toLowerCase() === normalizedLang);
+  if (match?.value) {
+    return String(match.value);
+  }
+
+  const first = descriptions.find((item) => item?.value);
+  return first?.value ? String(first.value) : "";
+}
+
+function resolveCompanyName(companyData) {
+  return (
+    safeValue(companyData?.company_name, "") ||
+    safeValue(pickDescription(companyData?.denomination?.[0]?.description, companyData?.lang_entre || "fr"), "") ||
+    `Entreprise ${safeValue(companyData?.number, "")}`
+  );
+}
+
+function resolveAddress(companyData, addressInfo) {
+  const fromCompany = companyData?.addresses?.[0] || {};
+  const normalized = {
+    street: safeValue(addressInfo?.rue || fromCompany?.street, ""),
+    houseNumber: safeValue(addressInfo?.numero || fromCompany?.houseNumber, ""),
+    box: safeValue(addressInfo?.boite || fromCompany?.box, ""),
+    postalCode: safeValue(addressInfo?.codePostal || fromCompany?.postalCode, ""),
+    municipality: safeValue(addressInfo?.commune || fromCompany?.municipality, ""),
+    country: safeValue(fromCompany?.country || "Belgique", "Belgique"),
+  };
+
+  const line1 = [normalized.street, normalized.houseNumber].filter(Boolean).join(" ");
+  const line1WithBox = normalized.box ? `${line1} boite ${normalized.box}` : line1;
+  const line2 = [normalized.postalCode, normalized.municipality].filter(Boolean).join(" ");
+  const full = [line1WithBox, line2, normalized.country].filter(Boolean).join(", ");
+
+  return {
+    ...normalized,
+    full,
+  };
+}
+
+function buildDossierDocument(documentKey, body) {
+  const companyData = body?.company_data || {};
+  const addressInfo = body?.address_info || {};
+  const depositaire = body?.depositaire || {};
+  const user = body?.user || {};
+  const payment = body?.payment || {};
+
+  const companyName = resolveCompanyName(companyData);
+  const enterpriseNumber = safeValue(companyData?.number);
+  const companyAddress = resolveAddress(companyData, addressInfo);
+  const legalForm = safeValue(companyData?.enterprise?.legalForm);
+  const startDate = safeValue(companyData?.enterprise?.startDate);
+  const status = safeValue(companyData?.juridicalSituation?.status?.description?.[0]?.value);
+  const depositaireName = [safeValue(depositaire?.given_name, ""), safeValue(depositaire?.nom, "")]
+    .filter(Boolean)
+    .join(" ");
+
+  const commonHeader = [
+    `Entreprise: ${companyName}`,
+    `Numero BCE: ${enterpriseNumber}`,
+    `Forme juridique: ${legalForm}`,
+    `Statut: ${status}`,
+    `Adresse: ${safeValue(companyAddress.full)}`,
+  ];
+
+  if (documentKey === "formulaire1entr") {
+    const content = [
+      "FORMULAIRE 1 - IDENTIFICATION ENTREPRISE",
+      "",
+      ...commonHeader,
+      "",
+      "Adresse detaillee:",
+      `- Rue: ${safeValue(companyAddress.street)}`,
+      `- Numero: ${safeValue(companyAddress.houseNumber)}`,
+      `- Boite: ${safeValue(companyAddress.box)}`,
+      `- Code postal: ${safeValue(companyAddress.postalCode)}`,
+      `- Commune: ${safeValue(companyAddress.municipality)}`,
+      `- Pays: ${safeValue(companyAddress.country)}`,
+      "",
+      `Date debut entreprise: ${startDate}`,
+      `Date changement: ${safeValue(addressInfo?.dateChangement)}`,
+    ].join("\n");
+
+    return {
+      fileName: "formulaire1entr-rempli.txt",
+      mimeType: "text/plain; charset=utf-8",
+      content,
+    };
+  }
+
+  if (documentKey === "formulaire2entr") {
+    const content = [
+      "FORMULAIRE 2 - MISE A JOUR ENTREPRISE",
+      "",
+      ...commonHeader,
+      "",
+      "Informations complementaires:",
+      `- Date de changement: ${safeValue(addressInfo?.dateChangement)}`,
+      `- Date assemblee generale: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
+      `- Depositaire: ${safeValue(depositaireName)}`,
+      `- Role depositaire: ${safeValue(depositaire?.role || "Administrateur")}`,
+      `- Email utilisateur: ${safeValue(user?.email)}`,
+      `- Pack: ${safeValue(payment?.pack?.slug)}`,
+    ].join("\n");
+
+    return {
+      fileName: "formulaire2entr-rempli.txt",
+      mimeType: "text/plain; charset=utf-8",
+      content,
+    };
+  }
+
+  if (documentKey === "attestation-identite") {
+    const content = [
+      "ATTESTATION D'IDENTITE - MODELE 1",
+      "",
+      ...commonHeader,
+      "",
+      `Representant: ${safeValue(depositaireName)}`,
+      `Fonction: ${safeValue(depositaire?.role || "Administrateur")}`,
+      `Date de constitution/debut: ${startDate}`,
+      `Exercice social: ${safeValue(companyData?.enterprise?.fiscalYear || "Non renseigne")}`,
+      `Assemblee generale: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
+    ].join("\n");
+
+    return {
+      fileName: "attestation-identite-remplie.txt",
+      mimeType: "text/plain; charset=utf-8",
+      content,
+    };
+  }
+
+  if (documentKey === "pv-assemblee-generale") {
+    const content = [
+      "PROCES-VERBAL DE L'ASSEMBLEE GENERALE",
+      "",
+      `Societe: ${companyName}`,
+      `Numero BCE: ${enterpriseNumber}`,
+      `Siege social: ${safeValue(companyAddress.full)}`,
+      `Date de l'assemblee: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
+      `Date de changement: ${safeValue(addressInfo?.dateChangement)}`,
+      "",
+      "Participants/dirigeants:",
+      `- ${safeValue(depositaireName || user?.name || "Representant")}`,
+      "",
+      "Decision:",
+      "L'assemblee approuve la mise a jour du siege social et les formalites associees.",
+    ].join("\n");
+
+    return {
+      fileName: "pv-assemblee-generale-rempli.txt",
+      mimeType: "text/plain; charset=utf-8",
+      content,
+    };
+  }
+
+  return null;
+}
+
 async function proxyAuth(req, res, targetUrl) {
   if (!targetUrl) {
     res.statusCode = 500;
@@ -1458,6 +1627,23 @@ const server = http.createServer(async (req, res) => {
         status: "not_configured",
         message: "Service de notification Veriff non configure. Definis VERIFF_NOTIFY_URL.",
       });
+      return;
+    }
+
+    if (method === "POST" && requestPath.startsWith("/lite/dossier/generate/")) {
+      const documentKey = decodeURIComponent(requestPath.replace("/lite/dossier/generate/", "")).trim();
+      const payload = await readJsonBody(req);
+      const doc = buildDossierDocument(documentKey, payload);
+
+      if (!doc) {
+        sendJson(res, 404, { message: "Type de document non supporte." });
+        return;
+      }
+
+      res.statusCode = 200;
+      res.setHeader("Content-Type", doc.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename=\"${doc.fileName}\"`);
+      res.end(doc.content);
       return;
     }
 

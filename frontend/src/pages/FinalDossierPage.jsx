@@ -32,7 +32,7 @@ const dossierFiles = [
 
 const dossierGenerateBaseEndpoint =
   import.meta.env.VITE_LEGAKTE_DOSSIER_GENERATE_ENDPOINT ??
-  'http://127.0.0.1:8000/lite/dossier/generate'
+  '/lite/dossier/generate'
 
 const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
 
