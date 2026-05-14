@@ -9,15 +9,26 @@ import FinalDossierPage from './pages/FinalDossierPage'
 import StripePage from './pages/StripePage'
 import StripeResultPage from './pages/StripeResultPage'
 
-const navItems = [
-  { to: '/stripe', label: '1. Paiement Stripe' },
-  { to: '/company', label: '2. Infos societe' },
-  { to: '/depositaire', label: '3. Depositaire + Veriff' },
-  { to: '/adresse-info', label: '4. Nouvelles adresses' },
-  { to: '/dossier-final', label: '5. Paiement + Dossier' },
-]
+const navRoutes = ['/stripe', '/company', '/depositaire', '/adresse-info', '/dossier-final']
 
-const getStepIndex = (pathname) => navItems.findIndex((item) => item.to === pathname)
+const buildNavItems = (uiLanguage) =>
+  uiLanguage === 'nl'
+    ? [
+        { to: '/stripe', label: '1. Stripe betaling' },
+        { to: '/company', label: '2. Bedrijfsinfo' },
+        { to: '/depositaire', label: '3. Bewaarnemer + Veriff' },
+        { to: '/adresse-info', label: '4. Nieuwe adressen' },
+        { to: '/dossier-final', label: '5. Betaling + Dossier' },
+      ]
+    : [
+        { to: '/stripe', label: '1. Paiement Stripe' },
+        { to: '/company', label: '2. Infos societe' },
+        { to: '/depositaire', label: '3. Depositaire + Veriff' },
+        { to: '/adresse-info', label: '4. Nouvelles adresses' },
+        { to: '/dossier-final', label: '5. Paiement + Dossier' },
+      ]
+
+const getStepIndex = (pathname) => navRoutes.findIndex((route) => route === pathname)
 
 function AppLayout() {
   const location = useLocation()
@@ -29,6 +40,28 @@ function AppLayout() {
   const [filesLanguage, setFilesLanguage] = useState(localStorage.getItem('aktly_files_language') || 'fr')
   const [pendingRoute, setPendingRoute] = useState('')
   const [privilegedAccess, setPrivilegedAccess] = useState(false)
+  const navItems = buildNavItems(uiLanguage)
+  const t = uiLanguage === 'nl'
+    ? {
+        secureLogin: 'Veilige login',
+        flowTitle: '5-stappen traject (auth buiten traject)',
+        uiLanguage: 'UI-taal',
+        logout: 'Afmelden',
+        step2Tag: 'Stap 2',
+        filesLangTitle: 'Bestandstaal kiezen',
+        filesLangDesc: 'Deze taal bepaalt de bestanden die later worden gegenereerd.',
+        confirm: 'Bevestigen',
+      }
+    : {
+        secureLogin: 'Connexion securisee',
+        flowTitle: 'Parcours 5 etapes (auth hors parcours)',
+        uiLanguage: 'Langue UI',
+        logout: 'Deconnexion',
+        step2Tag: 'Etape 2',
+        filesLangTitle: 'Choisir la langue des fichiers',
+        filesLangDesc: 'Cette langue controle les fichiers generes par la suite.',
+        confirm: 'Confirmer',
+      }
 
   useEffect(() => {
     let cancelled = false
@@ -121,7 +154,7 @@ function AppLayout() {
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-emerald-300">Aktly Lite</p>
             <h1 className="text-lg font-semibold">
-              {isAuthPage ? 'Connexion securisee' : 'Parcours 5 etapes (auth hors parcours)'}
+              {isAuthPage ? t.secureLogin : t.flowTitle}
             </h1>
           </div>
           {!isAuthPage && (
@@ -150,7 +183,7 @@ function AppLayout() {
               })}
               </nav>
               <label className="ml-auto flex items-center gap-2 rounded-full border border-slate-600 px-3 py-1.5 text-xs text-slate-200">
-                <span>Langue UI</span>
+                <span>{t.uiLanguage}</span>
                 <select
                   value={uiLanguage}
                   onChange={onChangeUiLanguage}
@@ -165,7 +198,7 @@ function AppLayout() {
                 onClick={onLogout}
                 className="wow-btn rounded-full border border-rose-300/60 bg-gradient-to-r from-rose-500 to-orange-400 px-4 py-1.5 text-sm font-semibold text-white shadow-lg shadow-rose-900/30 hover:from-rose-400 hover:to-orange-300"
               >
-                Deconnexion
+                {t.logout}
               </button>
             </div>
           )}
@@ -186,7 +219,7 @@ function AppLayout() {
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/stripe" element={<StripePage />} />
               <Route path="/stripe/result" element={<StripeResultPage />} />
-              <Route path="/company" element={<CompanyInfoPage privilegedAccess={privilegedAccess} />} />
+              <Route path="/company" element={<CompanyInfoPage privilegedAccess={privilegedAccess} uiLanguage={uiLanguage} />} />
               <Route path="/depositaire" element={<DepositairePage />} />
               <Route path="/adresse-info" element={<AddressInfoPage />} />
               <Route path="/dossier-final" element={<FinalDossierPage privilegedAccess={privilegedAccess} />} />
@@ -198,10 +231,10 @@ function AppLayout() {
       {showFilesLangPrompt && !isAuthPage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Etape 2</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-100">Choisir la langue des fichiers</h3>
+            <p className="text-xs uppercase tracking-[0.18em] text-amber-300">{t.step2Tag}</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-100">{t.filesLangTitle}</h3>
             <p className="mt-2 text-sm text-slate-300">
-              Cette langue controle les fichiers generes par la suite.
+              {t.filesLangDesc}
             </p>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
@@ -235,7 +268,7 @@ function AppLayout() {
                 onClick={onSelectFilesLanguage}
                 className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-300"
               >
-                Confirmer
+                {t.confirm}
               </button>
             </div>
           </div>

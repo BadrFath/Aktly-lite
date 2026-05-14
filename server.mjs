@@ -1572,13 +1572,42 @@ const server = http.createServer(async (req, res) => {
       }
 
       const payload = await readJsonBody(req);
+      const enterpriseNumber = payload?.enterprise_number;
+      const requestedLang = payload?.langue || "fr";
       try {
-        const fromBce = await fetchBceSoapCompany(payload?.enterprise_number, payload?.langue || "fr");
+        const fromBce = await fetchBceSoapCompany(enterpriseNumber, requestedLang);
         sendJson(res, 200, fromBce.company);
-      } catch (error) {
+      } catch (soapError) {
+        try {
+          const publicPayload = await fetchBcePublicCompany(enterpriseNumber, requestedLang);
+          if (publicPayload) {
+            sendJson(res, 200, {
+              ...publicPayload,
+              source: "bce-public-fallback",
+              warning: "BCE SOAP indisponible, donnees issues du service public BCE.",
+            });
+            return;
+          }
+        } catch (publicError) {
+          const localPayload = mapAktlyMainCompanyPayload(enterpriseNumber, requestedLang);
+          if (localPayload) {
+            sendJson(res, 200, {
+              ...localPayload,
+              warning: "BCE indisponible, donnees locales Aktly-main utilisees en secours.",
+            });
+            return;
+          }
+
+          sendJson(res, 502, {
+            message: "Impossible de recuperer les donnees BCE pour ce numero.",
+            details: `SOAP: ${String(soapError?.message || soapError)} | Public: ${String(publicError?.message || publicError)}`,
+          });
+          return;
+        }
+
         sendJson(res, 502, {
           message: "Impossible de recuperer les donnees BCE pour ce numero.",
-          details: String(error?.message || error),
+          details: String(soapError?.message || soapError),
         });
       }
       return;

@@ -70,7 +70,7 @@ const normalizeCompanyData = (payload, fallbackNumber, langue) => {
   }
 }
 
-function CompanyInfoPage() {
+function CompanyInfoPage({ uiLanguage = 'fr' }) {
   const navigate = useNavigate()
   const payment = useMemo(() => {
     const raw = localStorage.getItem('aktly_payment')
@@ -82,6 +82,49 @@ function CompanyInfoPage() {
   const [companyData, setCompanyData] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const t = uiLanguage === 'nl'
+    ? {
+        pageTag: 'Pagina 2 - Identificatie onderneming',
+        title: 'Bedrijfsinformatie',
+        subtitle: 'Scherm vergelijkbaar met Legakte voor ondernemingsopzoeking.',
+        enterpriseInput: 'Voer ondernemingsnummer in',
+        filesLang: 'Selecteer bestandstaal',
+        search: 'Zoeken',
+        searching: 'Zoeken...',
+        companyBox: 'ONDERNEMINGSGEGEVENS',
+        companyName: 'Bedrijfsnaam',
+        companyNumber: 'Ondernemingsnummer',
+        address: 'Adres',
+        status: 'Status',
+        type: 'Type',
+        legalForm: 'Rechtsvorm',
+        startDate: 'Startdatum',
+        previous: 'Vorige',
+        next: 'Volgende',
+        paymentRecap: 'Betalingsoverzicht',
+        noPayment: 'Geen betaling gedetecteerd.',
+      }
+    : {
+        pageTag: 'Page 2 - Identification entreprise',
+        title: 'Informations de la societe',
+        subtitle: 'Ecran similaire au flux Legakte pour la recherche d entreprise.',
+        enterpriseInput: 'Entrez le numero d entreprise ici',
+        filesLang: 'Selectionnez la langue des fichiers',
+        search: 'Rechercher',
+        searching: 'Recherche en cours...',
+        companyBox: "Informations de l'entreprise",
+        companyName: "Nom de l'entreprise",
+        companyNumber: "Numero d'entreprise",
+        address: 'Adresse',
+        status: 'Statut',
+        type: 'Type',
+        legalForm: 'Forme juridique',
+        startDate: 'Date de debut',
+        previous: 'Precedent',
+        next: 'Suivant',
+        paymentRecap: 'Recap paiement',
+        noPayment: 'Aucun paiement detecte.',
+      }
 
   const onSearchCompany = async (event) => {
     event.preventDefault()
@@ -110,7 +153,15 @@ function CompanyInfoPage() {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        const raw = await response.text().catch(() => '')
+        let details = `HTTP ${response.status}`
+        try {
+          const parsed = raw ? JSON.parse(raw) : {}
+          details = parsed?.details || parsed?.message || details
+        } catch {
+          details = raw || details
+        }
+        throw new Error(details)
       }
 
       const payload = await response.json()
@@ -154,16 +205,16 @@ function CompanyInfoPage() {
         className="wow-panel rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-amber-900/10"
       >
         <p className="text-xs uppercase tracking-[0.2em] text-amber-300">
-          Page 2 - Identification entreprise
+          {t.pageTag}
         </p>
-        <h2 className="mt-3 text-3xl font-bold">Informations de la societe</h2>
+        <h2 className="mt-3 text-3xl font-bold">{t.title}</h2>
         <p className="mt-2 text-slate-300">
-          Ecran similaire au flux Legakte pour la recherche d entreprise.
+          {t.subtitle}
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSearchCompany}>
           <label className="block text-sm font-medium text-slate-200">
-            Entrez le numero d entreprise ici
+            {t.enterpriseInput}
             <input
               type="text"
               required
@@ -175,7 +226,7 @@ function CompanyInfoPage() {
           </label>
 
           <label className="block text-sm font-medium text-slate-200">
-            Selectionnez la langue des fichiers
+            {t.filesLang}
             <select
               value={langue}
               onChange={(event) => setLangue(event.target.value)}
@@ -191,7 +242,7 @@ function CompanyInfoPage() {
             disabled={isLoading}
             className="wow-btn w-full rounded-xl bg-amber-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-amber-300"
           >
-            {isLoading ? 'Recherche en cours...' : 'Rechercher'}
+            {isLoading ? t.searching : t.search}
           </button>
         </form>
 
@@ -204,11 +255,11 @@ function CompanyInfoPage() {
         {companyData && (
           <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-800/40 p-4 text-sm">
             <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-amber-200">
-              Informations de l'entreprise
+              {t.companyBox}
             </h4>
             <div className="space-y-2">
               <div>
-                <p className="mb-1 text-xs text-slate-400">Nom de l'entreprise</p>
+                <p className="mb-1 text-xs text-slate-400">{t.companyName}</p>
                 <input
                   readOnly
                   value={denomination}
@@ -216,7 +267,7 @@ function CompanyInfoPage() {
                 />
               </div>
               <div>
-                <p className="mb-1 text-xs text-slate-400">Numero d'entreprise</p>
+                <p className="mb-1 text-xs text-slate-400">{t.companyNumber}</p>
                 <input
                   readOnly
                   value={companyData.number}
@@ -224,7 +275,7 @@ function CompanyInfoPage() {
                 />
               </div>
               <div>
-                <p className="mb-1 text-xs text-slate-400">Adresse</p>
+                <p className="mb-1 text-xs text-slate-400">{t.address}</p>
                 <input
                   readOnly
                   value={companyData.address}
@@ -233,10 +284,10 @@ function CompanyInfoPage() {
               </div>
             </div>
             <p className="mt-3 text-xs text-slate-400">
-              Statut: {statusLabel} | Type: {companyData.typeOfEnterprise}
+              {t.status}: {statusLabel} | {t.type}: {companyData.typeOfEnterprise}
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              Forme juridique: {legalForm || '-'} | Date de debut: {startDate || '-'}
+              {t.legalForm}: {legalForm || '-'} | {t.startDate}: {startDate || '-'}
             </p>
 
             <div className="mt-4 flex items-center justify-between gap-3">
@@ -245,14 +296,14 @@ function CompanyInfoPage() {
                 onClick={() => navigate('/stripe')}
                 className="wow-btn rounded-xl border border-slate-600 px-4 py-2.5 font-semibold text-slate-200 transition hover:border-slate-400"
               >
-                Precedent
+                {t.previous}
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/depositaire')}
                 className="wow-btn rounded-xl bg-amber-400 px-4 py-2.5 font-semibold text-slate-950 transition hover:bg-amber-300"
               >
-                Suivant
+                {t.next}
               </button>
             </div>
           </div>
@@ -263,7 +314,7 @@ function CompanyInfoPage() {
         variants={cardReveal}
         className="wow-panel-soft rounded-3xl border border-white/10 bg-slate-900/40 p-6"
       >
-        <h3 className="text-xl font-semibold">Recap paiement</h3>
+        <h3 className="text-xl font-semibold">{t.paymentRecap}</h3>
         {payment?.pack ? (
           <div className="mt-3 space-y-1 text-slate-300">
             <p>Pack: {payment.pack.slug}</p>
@@ -271,7 +322,7 @@ function CompanyInfoPage() {
             <p>Prix: {payment.pack.price}</p>
           </div>
         ) : (
-          <p className="mt-3 text-slate-300">Aucun paiement detecte.</p>
+          <p className="mt-3 text-slate-300">{t.noPayment}</p>
         )}
       </motion.aside>
     </motion.div>
