@@ -787,11 +787,36 @@ function cleanBceLines(value) {
   return String(value || "")
     .split(/\n+/)
     .map((line) => line.trim())
+    .map((line) => line.replace(/\b(?:depuis|sedert|sinds)\b[\s\S]*$/i, "").trim())
     .filter(Boolean)
     .filter((line) => !/^depuis\b/i.test(line))
     .filter((line) => !/^sedert\b/i.test(line))
     .filter((line) => !/^pas de donnees\b/i.test(normalizeLabel(line)))
     .filter((line) => !/^geen gegevens\b/i.test(normalizeLabel(line)));
+}
+
+function extractStartDateFromText(value) {
+  const text = String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) {
+    return null;
+  }
+
+  const phraseMatch = text.match(/(?:depuis|sedert|sinds)\s+([^,;]+)/i);
+  if (phraseMatch?.[1]) {
+    return phraseMatch[1].trim();
+  }
+
+  const dayMonthYear = text.match(/\b\d{1,2}\s+[A-Za-z\u00C0-\u017F]+\s+\d{4}\b/);
+  if (dayMonthYear?.[0]) {
+    return dayMonthYear[0];
+  }
+
+  const iso = text.match(/\b\d{4}-\d{2}-\d{2}\b/);
+  if (iso?.[0]) {
+    return iso[0];
+  }
+
+  return null;
 }
 
 function parseBceRows(html) {
@@ -903,7 +928,7 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
   const denominationRaw = pickRowValue(rows, ["Denomination", "Dénomination", "Benaming"]);
   const statusRaw = pickRowValue(rows, ["Statut", "Status"]);
   const legalSituationRaw = pickRowValue(rows, ["Situation juridique", "Juridische situatie"]);
-  const startDateRaw = pickRowValue(rows, ["Date de debut", "Date de début", "Startdatum"]);
+  const startDateRaw = pickRowValue(rows, ["Date de debut", "Date de début", "Startdatum", "Begindatum", "Datum oprichting", "Ingeschreven sinds"]);
   const legalFormRaw = pickRowValue(rows, ["Forme legale", "Forme légale", "Rechtsvorm"]);
   const addressRaw = pickRowValue(rows, ["Adresse du siege", "Adresse du siège", "Adres van de zetel"]);
 
@@ -911,7 +936,7 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
   const denomination = cleanBceLines(denominationRaw)[0] || `Entreprise ${number}`;
   const status = cleanBceLines(statusRaw)[0] || (langue === "nl" ? "Actief" : "Actif");
   const legalSituation = cleanBceLines(legalSituationRaw)[0] || status;
-  const startDate = cleanBceLines(startDateRaw)[0] || null;
+  const startDate = cleanBceLines(startDateRaw)[0] || extractStartDateFromText(addressRaw) || null;
   const legalForm = cleanBceLines(legalFormRaw)[0] || null;
   const address = parseAddressParts(cleanBceLines(addressRaw).join("\n"));
 

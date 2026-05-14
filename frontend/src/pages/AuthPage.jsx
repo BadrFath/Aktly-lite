@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-function AuthPage() {
+function AuthPage({ uiLanguage = 'fr' }) {
   const navigate = useNavigate()
   const [mode, setMode] = useState('login')
   const loginEndpoint = (import.meta.env.VITE_AUTH_LOGIN_ENDPOINT ?? '/api/auth/login').trim()
@@ -16,6 +16,33 @@ function AuthPage() {
   })
   const [errorMessage, setErrorMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const t = uiLanguage === 'nl'
+    ? {
+        title: 'Login / Registreren',
+        subtitle: 'Meld je aan of maak een account om verder te gaan naar Stripe-betaling.',
+        fullName: 'Volledige naam',
+        anonymous: 'Anonieme gebruiker',
+        email: 'E-mail',
+        password: 'Wachtwoord',
+        passwordAgain: 'Wachtwoord opnieuw invoeren',
+        next: 'Volgende',
+        checking: 'Controleren...',
+        secure: 'Beveiligde toegang',
+        secureDesc: 'Gebruik je gegevens om het traject te openen. In registratie-modus bevestig je het wachtwoord.',
+      }
+    : {
+        title: 'Login / Sign up',
+        subtitle: 'Connecte-toi ou cree un compte pour continuer vers le paiement Stripe.',
+        fullName: 'Nom complet',
+        anonymous: 'Utilisateur anonyme',
+        email: 'Email',
+        password: 'Mot de passe',
+        passwordAgain: 'Entrez a nouveau le mot de passe',
+        next: 'Suivant',
+        checking: 'Verification...',
+        secure: 'Acces securise',
+        secureDesc: 'Utilise tes identifiants pour acceder au parcours. En mode Sign up, confirme le mot de passe avant de continuer.',
+      }
 
   const onChange = (event) => {
     const { name, value } = event.target
@@ -125,9 +152,9 @@ function AuthPage() {
         variants={cardReveal}
         className="wow-panel rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-emerald-900/10"
       >
-        <h2 className="mt-3 text-3xl font-bold">Login / Sign up</h2>
+        <h2 className="mt-3 text-3xl font-bold">{t.title}</h2>
         <p className="mt-2 max-w-lg text-slate-300">
-          Connecte-toi ou cree un compte pour continuer vers le paiement Stripe.
+          {t.subtitle}
         </p>
 
         <div className="mt-6 inline-flex rounded-full border border-slate-700 bg-slate-950 p-1">
@@ -157,7 +184,7 @@ function AuthPage() {
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <label className="block text-sm font-medium text-slate-200">
-            Nom complet
+            {t.fullName}
             <input
               type="text"
               name="fullName"
@@ -165,12 +192,12 @@ function AuthPage() {
               value={form.fullName}
               onChange={onChange}
               className="wow-input mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-300"
-              placeholder="Utilisateur anonyme"
+              placeholder={t.anonymous}
             />
           </label>
 
           <label className="block text-sm font-medium text-slate-200">
-            Email
+            {t.email}
             <input
               type="email"
               name="email"
@@ -183,7 +210,7 @@ function AuthPage() {
           </label>
 
           <label className="block text-sm font-medium text-slate-200">
-            Mot de passe
+            {t.password}
             <input
               type="password"
               name="password"
@@ -197,7 +224,7 @@ function AuthPage() {
 
           {mode === 'signup' && (
             <label className="block text-sm font-medium text-slate-200">
-              Entrez a nouveau le mot de passe
+              {t.passwordAgain}
               <input
                 type="password"
                 name="confirmPassword"
@@ -222,7 +249,7 @@ function AuthPage() {
               disabled={isSubmitting}
               className="wow-btn rounded-xl bg-emerald-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-emerald-300"
             >
-              {isSubmitting ? 'Verification...' : 'Suivant'}
+              {isSubmitting ? t.checking : t.next}
             </button>
           </div>
         </form>
@@ -232,10 +259,9 @@ function AuthPage() {
         variants={cardReveal}
         className="wow-panel-soft rounded-3xl border border-white/10 bg-slate-900/40 p-6"
       >
-        <h3 className="text-xl font-semibold">Acces securise</h3>
+        <h3 className="text-xl font-semibold">{t.secure}</h3>
         <p className="mt-2 text-slate-300">
-          Utilise tes identifiants pour acceder au parcours. En mode Sign up,
-          confirme le mot de passe avant de continuer.
+          {t.secureDesc}
         </p>
       </motion.aside>
     </motion.div>

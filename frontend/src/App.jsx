@@ -216,13 +216,13 @@ function AppLayout() {
           >
             <Routes location={location}>
               <Route path="/" element={<Navigate to="/auth" replace />} />
-              <Route path="/auth" element={<AuthPage />} />
-              <Route path="/stripe" element={<StripePage />} />
-              <Route path="/stripe/result" element={<StripeResultPage />} />
+              <Route path="/auth" element={<AuthPage uiLanguage={uiLanguage} />} />
+              <Route path="/stripe" element={<StripePage uiLanguage={uiLanguage} />} />
+              <Route path="/stripe/result" element={<StripeResultPage uiLanguage={uiLanguage} />} />
               <Route path="/company" element={<CompanyInfoPage privilegedAccess={privilegedAccess} uiLanguage={uiLanguage} />} />
-              <Route path="/depositaire" element={<DepositairePage />} />
-              <Route path="/adresse-info" element={<AddressInfoPage />} />
-              <Route path="/dossier-final" element={<FinalDossierPage privilegedAccess={privilegedAccess} />} />
+              <Route path="/depositaire" element={<DepositairePage uiLanguage={uiLanguage} />} />
+              <Route path="/adresse-info" element={<AddressInfoPage uiLanguage={uiLanguage} />} />
+              <Route path="/dossier-final" element={<FinalDossierPage privilegedAccess={privilegedAccess} uiLanguage={uiLanguage} />} />
             </Routes>
           </motion.div>
         </AnimatePresence>

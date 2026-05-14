@@ -3,27 +3,27 @@ import { useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const dossierFiles = [
+const getDossierFiles = (uiLanguage) => [
   {
-    title: 'Formulaire 1',
+    title: uiLanguage === 'nl' ? 'Formulier 1' : 'Formulaire 1',
     documentKey: 'formulaire1entr',
     viewUrl: '/legakte-docs/formulaire1entr.pdf',
     fallbackDownloadUrl: '/legakte-docs/formulaire1entr.pdf',
   },
   {
-    title: 'Formulaire 2',
+    title: uiLanguage === 'nl' ? 'Formulier 2' : 'Formulaire 2',
     documentKey: 'formulaire2entr',
     viewUrl: '/legakte-docs/formulaire2entr.pdf',
     fallbackDownloadUrl: '/legakte-docs/formulaire2entr.pdf',
   },
   {
-    title: "Attestation d'identite modele 1",
+    title: uiLanguage === 'nl' ? 'Identiteitsattest model 1' : "Attestation d'identite modele 1",
     documentKey: 'attestation-identite',
     viewUrl: '/legakte-docs/attestation-identite-modele-1-fr.pdf',
     fallbackDownloadUrl: '/legakte-docs/attestation-identite-modele-1-fr.pdf',
   },
   {
-    title: "Proces-verbal de l'assemblee generale",
+    title: uiLanguage === 'nl' ? 'Proces-verbaal van de algemene vergadering' : "Proces-verbal de l'assemblee generale",
     documentKey: 'pv-assemblee-generale',
     viewUrl: '/legakte-docs/pv-assemblee-generale.txt',
     fallbackDownloadUrl: '/legakte-docs/pv-assemblee-generale.docx',
@@ -36,8 +36,76 @@ const dossierGenerateBaseEndpoint =
 
 const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
 
-function FinalDossierPage() {
+function FinalDossierPage({ uiLanguage = 'fr' }) {
   const navigate = useNavigate()
+  const dossierFiles = useMemo(() => getDossierFiles(uiLanguage), [uiLanguage])
+  const t = uiLanguage === 'nl'
+    ? {
+        pageTag: 'Pagina 5 - Betaling + Handtekening + Dossier',
+        title: 'Eindinformatie van het dossier',
+        subtitle: 'Betalingsoverzicht, ondertekeningsinstructies en dossierweergave/afdruk.',
+        paymentInfo: 'Informatie monitorbetaling',
+        client: 'Klant',
+        email: 'E-mail',
+        pack: 'Pack',
+        credits: 'Credits',
+        amount: 'Bedrag',
+        signHow: 'Hoe ondertekenen',
+        c1: 'Open het PV-document en controleer de informatie.',
+        c2: 'Onderteken met de gevraagde methode (eID of elektronische handtekening).',
+        c3: 'Controleer data en dossieradres voor indiening.',
+        c4: 'Bewaar een PDF-kopie van het volledige dossier.',
+        prefilled: 'Vooraf ingevulde bedrijfsinformatie',
+        enterprise: 'Onderneming',
+        bce: 'Ondernemingsnummer',
+        bceAddress: 'BCE-adres',
+        legalForm: 'Rechtsvorm',
+        startDate: 'Startdatum',
+        completeDossier: 'Volledig dossier (weergave en afdruk)',
+        generationFallback: 'Servergeneratie niet beschikbaar. Statisch bestand werd gedownload.',
+        view: 'Bekijken',
+        download: 'Downloaden',
+        generating: 'Genereren...',
+        dates: 'Wijzigingsdatum',
+        agDate: 'Datum AV',
+        printAll: 'Volledig dossier afdrukken',
+        prev: 'Vorige',
+        finish: 'Afronden en terug naar start',
+        filesSource: 'Bron gebruikte bestanden',
+      }
+    : {
+        pageTag: 'Page 5 - Paiement Moniteur + Signature + Dossier',
+        title: 'Informations finales du dossier',
+        subtitle: 'Recap paiement moniteur, consignes de signature, et dossier disponible en visuel ou impression.',
+        paymentInfo: 'Information de paiement moniteur',
+        client: 'Client',
+        email: 'Email',
+        pack: 'Pack',
+        credits: 'Credits',
+        amount: 'Montant',
+        signHow: 'Comment signer',
+        c1: 'Ouvrir le document PV et verifier les informations.',
+        c2: 'Signer avec la methode demandee (eID ou signature electronique).',
+        c3: 'Verifier les dates et l adresse du dossier avant depot.',
+        c4: 'Conserver une copie PDF du dossier complet.',
+        prefilled: 'Informations entreprise pre-remplies',
+        enterprise: 'Entreprise',
+        bce: 'Numero BCE',
+        bceAddress: 'Adresse BCE',
+        legalForm: 'Forme juridique',
+        startDate: 'Date de debut',
+        completeDossier: 'Dossier complet (visuel et impression)',
+        generationFallback: 'Generation serveur indisponible. Fichier statique telecharge a la place.',
+        view: 'Voir',
+        download: 'Telecharger',
+        generating: 'Generation...',
+        dates: 'Date changement',
+        agDate: 'Date AG',
+        printAll: 'Imprimer le dossier complet',
+        prev: 'Precedent',
+        finish: 'Terminer et revenir au debut',
+        filesSource: 'Source fichiers utilises',
+      }
 
   const payment = useMemo(() => {
     const raw = localStorage.getItem('aktly_payment')
@@ -126,7 +194,7 @@ function FinalDossierPage() {
       URL.revokeObjectURL(blobUrl)
     } catch {
       setDownloadError(
-        'Generation serveur indisponible. Fichier statique telecharge a la place.',
+        t.generationFallback,
       )
       triggerStaticDownload(file.fallbackDownloadUrl)
     } finally {
@@ -146,48 +214,47 @@ function FinalDossierPage() {
         className="wow-panel rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-sky-900/20"
       >
         <p className="text-xs uppercase tracking-[0.2em] text-sky-300">
-          Page 5 - Paiement Moniteur + Signature + Dossier
+          {t.pageTag}
         </p>
-        <h2 className="mt-3 text-3xl font-bold">Informations finales du dossier</h2>
+        <h2 className="mt-3 text-3xl font-bold">{t.title}</h2>
         <p className="mt-2 text-slate-300">
-          Recap paiement moniteur, consignes de signature, et dossier disponible en visuel
-          ou impression.
+          {t.subtitle}
         </p>
 
         <section className="mt-6 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <h3 className="text-lg font-semibold text-slate-100">Information de paiement moniteur</h3>
+          <h3 className="text-lg font-semibold text-slate-100">{t.paymentInfo}</h3>
           <div className="mt-2 space-y-1 text-sm text-slate-300">
-            <p>Client: {user?.name ?? 'Non renseigne'}</p>
-            <p>Email: {user?.email ?? 'Non renseigne'}</p>
-            <p>Pack: {payment?.pack?.slug ?? 'Non selectionne'}</p>
-            <p>Credits: {payment?.pack?.credits ?? 0}</p>
-            <p>Montant: {payment?.pack?.price ?? '-'}</p>
+            <p>{t.client}: {user?.name ?? 'Non renseigne'}</p>
+            <p>{t.email}: {user?.email ?? 'Non renseigne'}</p>
+            <p>{t.pack}: {payment?.pack?.slug ?? 'Non selectionne'}</p>
+            <p>{t.credits}: {payment?.pack?.credits ?? 0}</p>
+            <p>{t.amount}: {payment?.pack?.price ?? '-'}</p>
           </div>
         </section>
 
         <section className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <h3 className="text-lg font-semibold text-slate-100">Comment signer</h3>
+          <h3 className="text-lg font-semibold text-slate-100">{t.signHow}</h3>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-300">
-            <li>Ouvrir le document PV et verifier les informations.</li>
-            <li>Signer avec la methode demandee (eID ou signature electronique).</li>
-            <li>Verifier les dates et l adresse du dossier avant depot.</li>
-            <li>Conserver une copie PDF du dossier complet.</li>
+            <li>{t.c1}</li>
+            <li>{t.c2}</li>
+            <li>{t.c3}</li>
+            <li>{t.c4}</li>
           </ol>
         </section>
 
         <section className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <h3 className="text-lg font-semibold text-slate-100">Informations entreprise pre-remplies</h3>
+          <h3 className="text-lg font-semibold text-slate-100">{t.prefilled}</h3>
           <div className="mt-2 space-y-1 text-sm text-slate-300">
-            <p>Entreprise: {companyData?.company_name ?? '-'}</p>
-            <p>Numero BCE: {companyData?.number ?? '-'}</p>
-            <p>Adresse BCE: {companyData?.address ?? '-'}</p>
-            <p>Forme juridique: {companyData?.enterprise?.legalForm ?? '-'}</p>
-            <p>Date de debut: {companyData?.enterprise?.startDate ?? '-'}</p>
+            <p>{t.enterprise}: {companyData?.company_name ?? '-'}</p>
+            <p>{t.bce}: {companyData?.number ?? '-'}</p>
+            <p>{t.bceAddress}: {companyData?.address ?? '-'}</p>
+            <p>{t.legalForm}: {companyData?.enterprise?.legalForm ?? '-'}</p>
+            <p>{t.startDate}: {companyData?.enterprise?.startDate ?? '-'}</p>
           </div>
         </section>
 
         <section className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
-          <h3 className="text-lg font-semibold text-slate-100">Dossier complet (visuel et impression)</h3>
+          <h3 className="text-lg font-semibold text-slate-100">{t.completeDossier}</h3>
           {downloadError && (
             <p className="mt-2 rounded-lg border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
               {downloadError}
@@ -209,7 +276,7 @@ function FinalDossierPage() {
                     className="wow-btn inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700"
                   >
                     <span aria-hidden="true">◉</span>
-                    Voir
+                    {t.view}
                   </a>
                   <button
                     type="button"
@@ -218,7 +285,7 @@ function FinalDossierPage() {
                     className="wow-btn inline-flex items-center gap-2 rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-400"
                   >
                     <span aria-hidden="true">⬇</span>
-                    {downloadingKey === file.documentKey ? 'Generation...' : 'Telecharger'}
+                    {downloadingKey === file.documentKey ? t.generating : t.download}
                   </button>
                 </div>
               </article>
@@ -229,7 +296,7 @@ function FinalDossierPage() {
           <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900/50 p-3 text-sm text-slate-300">
             <p className="font-semibold text-slate-100">Dossier complet</p>
             <p className="mt-1">
-              Date changement: {addressInfo?.dateChangement || '-'} | Date AG:{' '}
+              {t.dates}: {addressInfo?.dateChangement || '-'} | {t.agDate}:{' '}
               {addressInfo?.dateAssembleeGenerale || '-'}
             </p>
             <button
@@ -237,7 +304,7 @@ function FinalDossierPage() {
               onClick={onPrintDossier}
               className="wow-btn mt-3 rounded-lg bg-violet-500 px-3 py-2 font-semibold text-white hover:bg-violet-400"
             >
-              Imprimer le dossier complet
+              {t.printAll}
             </button>
           </div>
         </section>
@@ -248,14 +315,14 @@ function FinalDossierPage() {
             onClick={() => navigate('/adresse-info')}
             className="wow-btn rounded-xl border border-slate-600 px-4 py-3 font-semibold text-slate-200 transition hover:border-slate-400"
           >
-            Precedent
+            {t.prev}
           </button>
           <button
             type="button"
             onClick={() => navigate('/auth')}
             className="wow-btn rounded-xl bg-sky-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-sky-300"
           >
-            Terminer et revenir au debut
+            {t.finish}
           </button>
         </div>
       </motion.article>
@@ -264,7 +331,7 @@ function FinalDossierPage() {
         variants={cardReveal}
         className="wow-panel-soft rounded-3xl border border-white/10 bg-slate-900/40 p-6"
       >
-        <h3 className="text-xl font-semibold">Source fichiers utilises</h3>
+        <h3 className="text-xl font-semibold">{t.filesSource}</h3>
         <p className="mt-2 text-sm text-slate-300">
           Fichiers copies depuis E:\\Mohammed el yakoubi\\Legakte pour les etapes 5 et 6.
         </p>

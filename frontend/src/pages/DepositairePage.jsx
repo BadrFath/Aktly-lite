@@ -49,7 +49,7 @@ const extractRows = (payload) => {
   return []
 }
 
-function DepositairePage() {
+function DepositairePage({ uiLanguage = 'fr' }) {
   const navigate = useNavigate()
   const companyDataRaw = localStorage.getItem('aktly_company_data')
   const companyData = companyDataRaw ? JSON.parse(companyDataRaw) : null
@@ -67,14 +67,77 @@ function DepositairePage() {
   const [veriffError, setVeriffError] = useState('')
   const [notifyMessage, setNotifyMessage] = useState('')
   const [notifySent, setNotifySent] = useState(false)
+  const t = uiLanguage === 'nl'
+    ? {
+        configMissing: 'Configuratie ontbreekt',
+        dirigeantsConfigMissing: 'Configuratie bestuurders ontbreekt. Controleer VITE_LEGAKTE_DIRIGEANTS_ENDPOINT.',
+        sessionUser: 'Gebruikerssessie',
+        apiConnectedNoDirigeant: 'API verbonden, maar geen bestuurder teruggegeven.',
+        apiUnavailable: 'Bestuurders-API onbeschikbaar of niet geauthenticeerd.',
+        notifyNotConfirmed: 'Verzending niet bevestigd door notificatieservice.',
+        notifySent: 'Bericht naar bewaarnemer verzonden.',
+        notifyFailed: 'Kan Veriff-bericht niet verzenden',
+        retry: 'Probeer opnieuw.',
+        veriffConfigMissing: 'Veriff-configuratie ontbreekt. Controleer VITE_VERIFF_SESSION_ENDPOINT.',
+        veriffFailed: 'Veriff-verzending mislukt. Controleer variabelen en Render-connectiviteit.',
+        pageTag: 'Pagina 3 - Bewaarnemer en Identificatie',
+        title: 'Bewaarnemer: Wie zal het dossier indienen?',
+        subtitle: 'Selecteer de bewaarnemer en start de identificatie (Veriff).',
+        delegate: 'Gedelegeerde bestuurder',
+        gsm: 'GSM-nummer voor Veriff',
+        prev: 'Vorige',
+        send: 'Start Veriff',
+        sending: 'Bezig met verzenden...',
+        sessionCreated: 'Veriff-sessie aangemaakt. De bewaarnemer kan nu de identiteit verifiëren.',
+        sendMsg: 'Veriff-bericht verzenden',
+        sendMsgLoading: 'Bericht verzenden...',
+        continue: 'Doorgaan',
+        listTitle: 'Lijst van bestuurders (bron ander dossier)',
+        listSubtitle: 'Reële gegevens van Legakte. Actieve bron:',
+        loading: 'Bestuurders laden...',
+        noDirigeant: 'Geen bestuurders beschikbaar via de API.',
+        functionLabel: 'Functie',
+        reference: 'Dossierreferentie',
+      }
+    : {
+        configMissing: 'Configuration manquante',
+        dirigeantsConfigMissing: 'Configuration dirigeants manquante. Verifie VITE_LEGAKTE_DIRIGEANTS_ENDPOINT.',
+        sessionUser: 'Session utilisateur',
+        apiConnectedNoDirigeant: 'API connectee, mais aucun dirigeant n a ete retourne.',
+        apiUnavailable: 'API dirigeants indisponible ou non authentifiee.',
+        notifyNotConfirmed: 'Envoi non confirme par le service de notification.',
+        notifySent: 'Message envoye au depositaire.',
+        notifyFailed: 'Impossible d envoyer le message Veriff',
+        retry: 'Reessaye.',
+        veriffConfigMissing: 'Configuration Veriff manquante. Verifie VITE_VERIFF_SESSION_ENDPOINT.',
+        veriffFailed: 'Envoi Veriff echoue. Verifie les variables et la connectivite Render.',
+        pageTag: 'Page 3 - Depositaire et Identification',
+        title: 'Depositaire: Qui va deposer le dossier ?',
+        subtitle: 'Selectionne le depositaire puis lance l identification (Veriff).',
+        delegate: 'Dirigeant delegue',
+        gsm: 'Numero GSM pour Veriff',
+        prev: 'Precedent',
+        send: 'Lancer Veriff',
+        sending: 'Envoi en cours...',
+        sessionCreated: 'Session Veriff creee. Le depositaire peut maintenant verifier son identite.',
+        sendMsg: 'Envoyer message Veriff',
+        sendMsgLoading: 'Envoi du message...',
+        continue: 'Continuer',
+        listTitle: 'Liste des dirigeants (source autre dossier)',
+        listSubtitle: 'Donnees reelles depuis Legakte. Source active:',
+        loading: 'Chargement des dirigeants...',
+        noDirigeant: 'Aucun dirigeant disponible via l API.',
+        functionLabel: 'Fonction',
+        reference: 'Reference dossier',
+      }
 
   useEffect(() => {
     let cancelled = false
 
     const loadDirigeants = async () => {
       if (!dirigeantsEndpoint) {
-        setSourceLabel('Configuration manquante')
-        setApiError('Configuration dirigeants manquante. Verifie VITE_LEGAKTE_DIRIGEANTS_ENDPOINT.')
+        setSourceLabel(t.configMissing)
+        setApiError(t.dirigeantsConfigMissing)
         return
       }
 
@@ -107,15 +170,15 @@ function DepositairePage() {
 
         if (!cancelled && normalized.length > 0) {
           setDirigeants(normalized)
-          setSourceLabel('Session utilisateur')
+          setSourceLabel(t.sessionUser)
         } else if (!cancelled) {
-          setApiError('API connectee, mais aucun dirigeant n a ete retourne.')
-          setSourceLabel('Session utilisateur')
+          setApiError(t.apiConnectedNoDirigeant)
+          setSourceLabel(t.sessionUser)
         }
       } catch {
         if (!cancelled) {
-          setApiError('API dirigeants indisponible ou non authentifiee.')
-          setSourceLabel('Session utilisateur')
+          setApiError(t.apiUnavailable)
+          setSourceLabel(t.sessionUser)
         }
       } finally {
         if (!cancelled) {
@@ -129,7 +192,7 @@ function DepositairePage() {
     return () => {
       cancelled = true
     }
-  }, [dirigeantsEndpoint, enterpriseNumber])
+  }, [dirigeantsEndpoint, enterpriseNumber, t.apiConnectedNoDirigeant, t.apiUnavailable, t.configMissing, t.dirigeantsConfigMissing, t.sessionUser])
 
   useEffect(() => {
     if (!dirigeants.some((item) => item.id === selectedDirigeantId)) {
@@ -183,17 +246,17 @@ function DepositairePage() {
         Boolean(payload?.messageId || payload?.message_id || payload?.reference)
 
       if (!confirmed) {
-        throw new Error(payload?.message || 'Envoi non confirme par le service de notification.')
+        throw new Error(payload?.message || t.notifyNotConfirmed)
       }
 
-      const message = payload?.message || 'Message envoye au depositaire.'
+      const message = payload?.message || t.notifySent
       setNotifyMessage(message)
       setNotifySent(true)
       localStorage.setItem('aktly_veriff_notification', 'sent')
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
       setVeriffError(
-        `Impossible d envoyer le message Veriff${message ? `: ${message}` : '. Reessaye.'}`,
+        `${t.notifyFailed}${message ? `: ${message}` : `. ${t.retry}`}`,
       )
     } finally {
       setIsSendingNotify(false)
@@ -204,7 +267,7 @@ function DepositairePage() {
     event.preventDefault()
 
     if (!veriffSessionEndpoint) {
-      setVeriffError('Configuration Veriff manquante. Verifie VITE_VERIFF_SESSION_ENDPOINT.')
+      setVeriffError(t.veriffConfigMissing)
       return
     }
 
@@ -254,7 +317,7 @@ function DepositairePage() {
 
       setVeriffSent(true)
     } catch {
-      setVeriffError('Envoi Veriff echoue. Verifie les variables et la connectivite Render.')
+      setVeriffError(t.veriffFailed)
     } finally {
       setIsSendingVeriff(false)
     }
@@ -272,16 +335,16 @@ function DepositairePage() {
         className="wow-panel rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-xl shadow-fuchsia-900/10"
       >
         <p className="text-xs uppercase tracking-[0.2em] text-fuchsia-300">
-          Page 3 - Depositaire et Identification
+          {t.pageTag}
         </p>
-        <h2 className="mt-3 text-3xl font-bold">Depositaire: Qui va deposer le dossier ?</h2>
+        <h2 className="mt-3 text-3xl font-bold">{t.title}</h2>
         <p className="mt-2 text-slate-300">
-          Selectionne le depositaire puis lance l identification (Veriff).
+          {t.subtitle}
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={onSendVeriff}>
           <label className="block text-sm font-medium text-slate-200">
-            Dirigeant delegue
+            {t.delegate}
             <select
               value={selectedDirigeantId}
               onChange={(event) => setSelectedDirigeantId(event.target.value)}
@@ -296,7 +359,7 @@ function DepositairePage() {
           </label>
 
           <label className="block text-sm font-medium text-slate-200">
-            Numero GSM pour Veriff
+            {t.gsm}
             <input
               type="text"
               required
@@ -313,14 +376,14 @@ function DepositairePage() {
               onClick={() => navigate('/company')}
               className="wow-btn rounded-xl border border-slate-600 px-4 py-3 font-semibold text-slate-200 transition hover:border-slate-400"
             >
-              Precedent
+              {t.prev}
             </button>
             <button
               type="submit"
               disabled={isSendingVeriff || !selectedDirigeant}
               className="wow-btn rounded-xl bg-fuchsia-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-fuchsia-300"
             >
-              {isSendingVeriff ? 'Envoi en cours...' : 'Lancer Veriff'}
+              {isSendingVeriff ? t.sending : t.send}
             </button>
           </div>
         </form>
@@ -339,7 +402,7 @@ function DepositairePage() {
 
         {veriffSent && (
           <div className="mt-5 space-y-3 rounded-xl border border-fuchsia-300/40 bg-fuchsia-300/10 p-3 text-sm text-fuchsia-100">
-            <p>Session Veriff creee. Le depositaire peut maintenant verifier son identite.</p>
+            <p>{t.sessionCreated}</p>
             <div className="flex justify-end">
               <button
                 type="button"
@@ -347,7 +410,7 @@ function DepositairePage() {
                 disabled={isSendingNotify}
                 className="wow-btn rounded-xl bg-fuchsia-200 px-4 py-2 font-semibold text-slate-900 transition hover:bg-fuchsia-100"
               >
-                {isSendingNotify ? 'Envoi du message...' : 'Envoyer message Veriff'}
+                {isSendingNotify ? t.sendMsgLoading : t.sendMsg}
               </button>
             </div>
             {notifySent && (
@@ -357,7 +420,7 @@ function DepositairePage() {
                   onClick={() => navigate('/adresse-info')}
                   className="wow-btn rounded-xl bg-emerald-300 px-4 py-2 font-semibold text-slate-900 transition hover:bg-emerald-200"
                 >
-                  Continuer
+                  {t.continue}
                 </button>
               </div>
             )}
@@ -369,23 +432,23 @@ function DepositairePage() {
         variants={cardReveal}
         className="wow-panel-soft rounded-3xl border border-white/10 bg-slate-900/40 p-6"
       >
-        <h3 className="text-xl font-semibold">Liste des dirigeants (source autre dossier)</h3>
+        <h3 className="text-xl font-semibold">{t.listTitle}</h3>
         <p className="mt-2 text-sm text-slate-300">
-          Donnees reelles depuis Legakte. Source active: {sourceLabel}
+          {t.listSubtitle} {sourceLabel}
         </p>
-        {isLoadingDirigeants && <p className="mt-2 text-xs text-sky-300">Chargement des dirigeants...</p>}
+        {isLoadingDirigeants && <p className="mt-2 text-xs text-sky-300">{t.loading}</p>}
         {apiError && <p className="mt-2 text-xs text-amber-300">{apiError}</p>}
         <div className="mt-4 space-y-3">
           {!isLoadingDirigeants && dirigeants.length === 0 && (
-            <p className="text-sm text-slate-300">Aucun dirigeant disponible via l API.</p>
+            <p className="text-sm text-slate-300">{t.noDirigeant}</p>
           )}
           {dirigeants.map((dirigeant) => (
             <div key={dirigeant.id} className="rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm">
               <p className="font-semibold text-slate-100">
                 {dirigeant.givenName} {dirigeant.surname}
               </p>
-              <p className="text-slate-300">Fonction: {dirigeant.function}</p>
-              <p className="text-slate-400">Reference dossier: {dirigeant.demandeId}</p>
+              <p className="text-slate-300">{t.functionLabel}: {dirigeant.function}</p>
+              <p className="text-slate-400">{t.reference}: {dirigeant.demandeId}</p>
             </div>
           ))}
         </div>

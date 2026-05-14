@@ -10,10 +10,41 @@ const pack = {
   credits: 50,
 }
 
-function StripePage() {
+function StripePage({ uiLanguage = 'fr' }) {
   const navigate = useNavigate()
   const [errorMessage, setErrorMessage] = useState('')
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const t = uiLanguage === 'nl'
+    ? {
+        title: 'Stripe betaling',
+        monthly: '/ maand',
+        hint: 'Het betaalformulier wordt enkel ingevuld op de echte Stripe-pagina.',
+        secureTab: 'Je betaling gebeurt in een nieuw beveiligd Stripe-tabblad.',
+        autoReturn: 'Automatische terugkeer met statuscontrole.',
+        paymentOnly: 'Betaling enkel via Stripe',
+        prev: 'Vorige',
+        open: 'Openen van Stripe...',
+        pay: 'Betalen in EUR via Stripe',
+        foot: 'Stripe opent in een nieuw tabblad. Daarna keer je terug voor betalingscontrole.',
+        payLinkMissing: 'Stripe-betaallink niet gevonden.',
+        openFailed: 'Kan Stripe niet openen',
+        checkRender: 'Controleer Stripe-configuratie op Render.',
+      }
+    : {
+        title: 'Paiement Stripe',
+        monthly: '/ mois',
+        hint: 'Le formulaire de paiement est rempli uniquement sur la vraie page Stripe.',
+        secureTab: 'Votre paiement se fait dans un nouvel onglet Stripe securise.',
+        autoReturn: 'Retour automatique avec verification du statut.',
+        paymentOnly: 'Paiement uniquement via Stripe',
+        prev: 'Precedent',
+        open: 'Ouverture de Stripe...',
+        pay: 'Payer en EUR sur Stripe',
+        foot: 'Stripe s ouvre dans un nouvel onglet. Vous revenez ensuite pour verification du paiement.',
+        payLinkMissing: 'Lien de paiement Stripe introuvable.',
+        openFailed: 'Impossible d ouvrir Stripe',
+        checkRender: 'Verifie la configuration Stripe sur Render.',
+      }
 
   const money = useMemo(() => {
     return {
@@ -50,7 +81,7 @@ function StripePage() {
       const paymentUrl = (payload?.url || '').trim()
 
       if (!paymentUrl) {
-        throw new Error('Lien de paiement Stripe introuvable.')
+        throw new Error(t.payLinkMissing)
       }
 
       localStorage.setItem(
@@ -79,7 +110,7 @@ function StripePage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
       setErrorMessage(
-        `Impossible d ouvrir Stripe${message ? `: ${message}` : '. Verifie la configuration Stripe sur Render.'}`,
+        `${t.openFailed}${message ? `: ${message}` : `. ${t.checkRender}`}`,
       )
       setIsRedirecting(false)
       return
@@ -95,14 +126,14 @@ function StripePage() {
         className="rounded-3xl border border-slate-200/90 bg-slate-50 p-6 text-slate-700 shadow-2xl shadow-slate-950/20"
       >
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Aktly</p>
-        <h2 className="mt-6 text-3xl font-bold text-slate-800">Paiement Stripe</h2>
+        <h2 className="mt-6 text-3xl font-bold text-slate-800">{t.title}</h2>
         <p className="mt-2 text-5xl font-semibold text-slate-900">
           {money.display}
-          <span className="ml-2 text-2xl font-medium text-slate-500">/ mois</span>
+          <span className="ml-2 text-2xl font-medium text-slate-500">{t.monthly}</span>
         </p>
 
         <p className="mt-3 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
-          Le formulaire de paiement est rempli uniquement sur la vraie page Stripe.
+          {t.hint}
         </p>
 
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-4">
@@ -110,9 +141,9 @@ function StripePage() {
             <div>
               <p className="text-2xl font-semibold text-slate-800">{pack.title}</p>
               <p className="mt-2 text-base text-slate-500">
-                Votre paiement se fait dans un nouvel onglet Stripe securise.
+                {t.secureTab}
               </p>
-              <p className="mt-2 text-sm text-slate-500">Retour automatique avec verification du statut.</p>
+              <p className="mt-2 text-sm text-slate-500">{t.autoReturn}</p>
             </div>
             <p className="text-3xl font-semibold text-slate-800">{money.display}</p>
           </div>
@@ -124,7 +155,7 @@ function StripePage() {
         className="rounded-3xl border border-slate-200/90 bg-slate-50 p-6 text-slate-700 shadow-2xl shadow-slate-950/20"
       >
         <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-900">
-          Paiement uniquement via Stripe
+          {t.paymentOnly}
         </div>
 
         <div className="security-stage mt-5">
@@ -222,7 +253,7 @@ function StripePage() {
             onClick={() => navigate('/auth')}
             className="rounded-xl border border-slate-300 bg-gradient-to-b from-white to-slate-100 px-5 py-3 font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-500 hover:shadow-lg"
           >
-            Precedent
+            {t.prev}
           </button>
           <button
             type="button"
@@ -230,12 +261,12 @@ function StripePage() {
             disabled={isRedirecting}
             className="rounded-xl bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-emerald-300/50 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isRedirecting ? 'Ouverture de Stripe...' : 'Payer en EUR sur Stripe'}
+            {isRedirecting ? t.open : t.pay}
           </button>
         </div>
 
         <p className="mt-3 text-sm text-slate-500">
-          Stripe s ouvre dans un nouvel onglet. Vous revenez ensuite pour verification du paiement.
+          {t.foot}
         </p>
 
         {errorMessage && (

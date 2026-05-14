@@ -180,9 +180,10 @@ function CompanyInfoPage({ uiLanguage = 'fr' }) {
       localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
       localStorage.setItem('aktly_step_3', 'done')
       const details = error instanceof Error ? error.message : ''
-      setErrorMessage(
-        `API Legakte indisponible ou non authentifiee. Donnees locales affichees.${details ? ` (${details})` : ''}`,
-      )
+      const baseError = uiLanguage === 'nl'
+        ? 'Legakte-API onbeschikbaar of niet geauthenticeerd. Lokale gegevens worden getoond.'
+        : 'API Legakte indisponible ou non authentifiee. Donnees locales affichees.'
+      setErrorMessage(`${baseError}${details ? ` (${details})` : ''}`)
     } finally {
       setIsLoading(false)
     }
