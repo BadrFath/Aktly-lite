@@ -51,6 +51,9 @@ const extractRows = (payload) => {
 
 function DepositairePage() {
   const navigate = useNavigate()
+  const companyDataRaw = localStorage.getItem('aktly_company_data')
+  const companyData = companyDataRaw ? JSON.parse(companyDataRaw) : null
+  const enterpriseNumber = String(companyData?.number ?? '').replace(/\D+/g, '')
   const [type, setType] = useState('comptable')
   const [dirigeants, setDirigeants] = useState([])
   const [selectedDirigeantId, setSelectedDirigeantId] = useState('')
@@ -79,12 +82,18 @@ function DepositairePage() {
       setApiError('')
 
       try {
-        const response = await fetch(dirigeantsEndpoint, {
+        const authToken = localStorage.getItem('aktly_auth_token') ?? ''
+        const search = enterpriseNumber
+          ? `?enterprise_number=${encodeURIComponent(enterpriseNumber)}`
+          : ''
+        const response = await fetch(`${dirigeantsEndpoint}${search}`, {
           method: 'GET',
           headers: {
             ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+            ...(authToken ? { 'X-Auth-Token': authToken } : {}),
           },
           credentials: 'include',
+          ...(search ? { cache: 'no-store' } : {}),
         })
 
         if (!response.ok) {
@@ -98,15 +107,15 @@ function DepositairePage() {
 
         if (!cancelled && normalized.length > 0) {
           setDirigeants(normalized)
-          setSourceLabel('API Legakte live')
+          setSourceLabel('Session utilisateur')
         } else if (!cancelled) {
           setApiError('API connectee, mais aucun dirigeant n a ete retourne.')
-          setSourceLabel('API Legakte live')
+          setSourceLabel('Session utilisateur')
         }
       } catch {
         if (!cancelled) {
           setApiError('API dirigeants indisponible ou non authentifiee.')
-          setSourceLabel('API Legakte live')
+          setSourceLabel('Session utilisateur')
         }
       } finally {
         if (!cancelled) {
@@ -120,7 +129,7 @@ function DepositairePage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [dirigeantsEndpoint, enterpriseNumber])
 
   useEffect(() => {
     if (!dirigeants.some((item) => item.id === selectedDirigeantId)) {

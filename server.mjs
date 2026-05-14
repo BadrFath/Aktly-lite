@@ -336,6 +336,17 @@ function htmlCellToText(value) {
     .trim();
 }
 
+function cleanBceLines(value) {
+  return String(value || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^depuis\b/i.test(line))
+    .filter((line) => !/^sedert\b/i.test(line))
+    .filter((line) => !/^pas de donnees\b/i.test(normalizeLabel(line)))
+    .filter((line) => !/^geen gegevens\b/i.test(normalizeLabel(line)));
+}
+
 function parseBceRows(html) {
   const rows = [];
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -376,10 +387,7 @@ function pickRowValue(rows, labels) {
 }
 
 function parseAddressParts(addressText) {
-  const lines = String(addressText || "")
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = cleanBceLines(addressText);
 
   const lineOne = lines[0] || "";
   const lineTwo = lines[1] || "";
@@ -453,12 +461,12 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
   const addressRaw = pickRowValue(rows, ["Adresse du siege", "Adresse du siège", "Adres van de zetel"]);
 
   const number = String(numberRaw || cleanNumber).replace(/\D+/g, "") || cleanNumber;
-  const denomination = denominationRaw.split(/\n+/)[0]?.trim() || `Entreprise ${number}`;
-  const status = statusRaw.split(/\n+/)[0]?.trim() || (langue === "nl" ? "Actief" : "Actif");
-  const legalSituation = legalSituationRaw.split(/\n+/)[0]?.trim() || status;
-  const startDate = startDateRaw.split(/\n+/)[0]?.trim() || null;
-  const legalForm = legalFormRaw.split(/\n+/)[0]?.trim() || null;
-  const address = parseAddressParts(addressRaw);
+  const denomination = cleanBceLines(denominationRaw)[0] || `Entreprise ${number}`;
+  const status = cleanBceLines(statusRaw)[0] || (langue === "nl" ? "Actief" : "Actif");
+  const legalSituation = cleanBceLines(legalSituationRaw)[0] || status;
+  const startDate = cleanBceLines(startDateRaw)[0] || null;
+  const legalForm = cleanBceLines(legalFormRaw)[0] || null;
+  const address = parseAddressParts(cleanBceLines(addressRaw).join("\n"));
 
   return {
     lang_entre: langue || "fr",
@@ -646,21 +654,44 @@ async function fetchBnbCompany(enterpriseNumber, langue) {
   throw new Error(lastError || "Aucune route BNB valide repond");
 }
 
-function makeDirigeantsPayload() {
+function splitNameFromEmail(email) {
+  const localPart = String(email || "").split("@")[0] || "";
+  const words = localPart
+    .split(/[._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1));
+
+  if (words.length === 0) {
+    return { given_name: "Utilisateur", nom: "Aktly" };
+  }
+
+  if (words.length === 1) {
+    return { given_name: words[0], nom: "" };
+  }
+
+  return {
+    given_name: words[0],
+    nom: words.slice(1).join(" "),
+  };
+}
+
+async function makeDirigeantsPayload(req, enterpriseNumber) {
+  const token = extractAccessToken(req);
+  const session = token ? await findAccessSession(token) : null;
+
+  if (!session?.email) {
+    return { data: [] };
+  }
+
+  const parsed = splitNameFromEmail(session.email);
   return {
     data: [
       {
-        id: "657",
-        demande_id: "a0eaa59a-31f1-4e54-8b16-0ec5f69705d3",
-        given_name: "Mohamed",
-        nom: "El Yakoubi",
-        role: "Administrateur",
-      },
-      {
-        id: "652",
-        demande_id: "a0d5cc74-2911-4044-9369-e05188669e5f",
-        given_name: "Celine",
-        nom: "Pousseur",
+        id: session.userId || crypto.randomUUID(),
+        demande_id: String(enterpriseNumber || "N/A"),
+        given_name: parsed.given_name,
+        nom: parsed.nom,
         role: "Administrateur",
       },
     ],
@@ -943,7 +974,10 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      sendJson(res, 200, makeDirigeantsPayload());
+      const url = new URL(req.url || "/", "http://localhost");
+      const enterpriseNumber = String(url.searchParams.get("enterprise_number") || "").replace(/\D+/g, "");
+      const payload = await makeDirigeantsPayload(req, enterpriseNumber);
+      sendJson(res, 200, payload);
       return;
     }
 
