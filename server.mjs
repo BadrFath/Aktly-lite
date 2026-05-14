@@ -32,6 +32,35 @@ const stripePaymentLinkRuntime = (
   ""
 ).trim();
 
+// Source: C:/Users/hp/Downloads/Compressed/Aktly-main/storage/logs/laravel.log
+// (entries "response bce" for enterprise 1022158878)
+const companyDirectoryFromAktlyMain = {
+  "1022158878": {
+    number: "1022158878",
+    denomination: "LEGAKTE",
+    status: "Actif",
+    legalSituation: "Situation normale",
+    typeOfEnterprise: "ELP",
+    legalForm: "Société à responsabilité limitée",
+    startDate: "2025-04-09",
+    address: {
+      street: "Avenue des Gerfauts",
+      houseNumber: "10",
+      box: "34",
+      postalCode: "1170",
+      municipality: "Watermael-Boitsfort",
+      country: "Belgique",
+    },
+    dirigeants: [
+      {
+        givenName: "Mohamed",
+        surname: "El Yakoubi",
+        function: "Administrateur",
+      },
+    ],
+  },
+};
+
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -295,6 +324,62 @@ function makeCompanyPayload(enterpriseNumber, langue) {
         description: [{ language: langue || "fr", value: status }],
       },
     },
+  };
+}
+
+function mapAktlyMainCompanyPayload(enterpriseNumber, langue) {
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+  const source = companyDirectoryFromAktlyMain[cleanNumber];
+
+  if (!source) {
+    return null;
+  }
+
+  const lineOne = [source.address.street, source.address.houseNumber]
+    .filter(Boolean)
+    .join(" ");
+  const withBox = source.address.box ? `${lineOne} boite ${source.address.box}` : lineOne;
+  const lineTwo = [source.address.postalCode, source.address.municipality]
+    .filter(Boolean)
+    .join(" ");
+  const fullAddress = [withBox, lineTwo, source.address.country].filter(Boolean).join(", ");
+
+  return {
+    lang_entre: langue || "fr",
+    number: source.number,
+    denomination: [
+      {
+        description: [
+          { language: "fr", value: source.denomination },
+          { language: "nl", value: source.denomination },
+        ],
+      },
+    ],
+    address: fullAddress,
+    addresses: [
+      {
+        street: source.address.street,
+        houseNumber: source.address.houseNumber,
+        box: source.address.box,
+        postalCode: source.address.postalCode,
+        municipality: source.address.municipality,
+        country: source.address.country,
+        full: fullAddress,
+      },
+    ],
+    enterprise: {
+      legalForm: source.legalForm,
+      startDate: source.startDate,
+      vatLiable: null,
+      legalSituation: source.legalSituation,
+    },
+    typeOfEnterprise: source.typeOfEnterprise,
+    juridicalSituation: {
+      status: {
+        description: [{ language: langue || "fr", value: source.status }],
+      },
+    },
+    source: "aktly-main",
   };
 }
 
@@ -677,6 +762,20 @@ function splitNameFromEmail(email) {
 }
 
 async function makeDirigeantsPayload(req, enterpriseNumber) {
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+  const source = companyDirectoryFromAktlyMain[cleanNumber];
+  if (source?.dirigeants?.length) {
+    return {
+      data: source.dirigeants.map((row, index) => ({
+        id: `${cleanNumber}-${index + 1}`,
+        demande_id: cleanNumber || "N/A",
+        given_name: row.givenName,
+        nom: row.surname,
+        role: row.function || "Administrateur",
+      })),
+    };
+  }
+
   const token = extractAccessToken(req);
   const session = token ? await findAccessSession(token) : null;
 
@@ -922,49 +1021,16 @@ const server = http.createServer(async (req, res) => {
       }
 
       const payload = await readJsonBody(req);
-      try {
-        const bnbPayload = await fetchBnbCompany(payload?.enterprise_number, payload?.langue);
-        if (bnbPayload) {
-          sendJson(res, 200, bnbPayload);
-          return;
-        }
-      } catch (error) {
-        const bnbError = String(error?.message || error);
-        try {
-          const bcePayload = await fetchBcePublicCompany(payload?.enterprise_number, payload?.langue || "fr");
-          if (bcePayload) {
-            sendJson(res, 200, {
-              ...bcePayload,
-              warning: "BNB indisponible, donnees BCE publiques utilisees.",
-              bnb_error: bnbError,
-            });
-            return;
-          }
-        } catch (bceError) {
-          const fallback = makeCompanyPayload(payload?.enterprise_number, payload?.langue);
-          sendJson(res, 200, {
-            ...fallback,
-            warning: "BNB et BCE indisponibles, resultat de secours utilise.",
-            bnb_error: bnbError,
-            bce_error: String(bceError?.message || bceError),
-          });
-          return;
-        }
+      const localPayload = mapAktlyMainCompanyPayload(payload?.enterprise_number, payload?.langue || "fr");
+      if (localPayload) {
+        sendJson(res, 200, localPayload);
+        return;
       }
 
-      try {
-        const bcePayload = await fetchBcePublicCompany(payload?.enterprise_number, payload?.langue || "fr");
-        if (bcePayload) {
-          sendJson(res, 200, {
-            ...bcePayload,
-            warning: "Resultat BCE public utilise.",
-          });
-          return;
-        }
-      } catch {
-      }
-
-      sendJson(res, 200, makeCompanyPayload(payload?.enterprise_number, payload?.langue));
+      sendJson(res, 200, {
+        ...makeCompanyPayload(payload?.enterprise_number, payload?.langue),
+        warning: "Aucune donnee correspondante trouvee dans Aktly-main pour ce numero.",
+      });
       return;
     }
 
