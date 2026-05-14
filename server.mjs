@@ -259,8 +259,7 @@ async function stripeGet(pathname) {
 function makeCompanyPayload(enterpriseNumber, langue) {
   const number = String(enterpriseNumber || "").replace(/\D+/g, "") || "0000000000";
   const companyName = `Entreprise ${number}`;
-  const city = langue === "nl" ? "Brussel" : "Bruxelles";
-  const status = langue === "nl" ? "Actief" : "Actif";
+  const status = langue === "nl" ? "Onbekend" : "Inconnu";
 
   return {
     lang_entre: langue || "fr",
@@ -273,7 +272,213 @@ function makeCompanyPayload(enterpriseNumber, langue) {
         ],
       },
     ],
-    address: `Avenue Centrale 10, 1000 ${city}`,
+    address: langue === "nl" ? "Adres niet beschikbaar" : "Adresse non disponible",
+    addresses: [
+      {
+        street: "",
+        houseNumber: "",
+        box: "",
+        postalCode: "",
+        municipality: "",
+        country: "Belgique",
+        full: langue === "nl" ? "Adres niet beschikbaar" : "Adresse non disponible",
+      },
+    ],
+    enterprise: {
+      legalForm: null,
+      startDate: null,
+      vatLiable: null,
+    },
+    typeOfEnterprise: "ELP",
+    juridicalSituation: {
+      status: {
+        description: [{ language: langue || "fr", value: status }],
+      },
+    },
+  };
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&eacute;/gi, "e")
+    .replace(/&egrave;/gi, "e")
+    .replace(/&ecirc;/gi, "e")
+    .replace(/&agrave;/gi, "a")
+    .replace(/&uuml;/gi, "u")
+    .replace(/&ouml;/gi, "o")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+}
+
+function normalizeLabel(value) {
+  return decodeHtmlEntities(String(value || ""))
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[:]/g, "");
+}
+
+function htmlCellToText(value) {
+  const withBreaks = String(value || "").replace(/<br\s*\/?\s*>/gi, "\n");
+  return decodeHtmlEntities(withBreaks)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s+/g, "\n")
+    .replace(/\s+\n/g, "\n")
+    .trim();
+}
+
+function parseBceRows(html) {
+  const rows = [];
+  const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let trMatch;
+
+  while ((trMatch = trRegex.exec(html)) !== null) {
+    const rowHtml = trMatch[1] || "";
+    const cells = [];
+    const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    let cellMatch;
+    while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
+      cells.push(cellMatch[1]);
+    }
+
+    if (cells.length >= 2) {
+      rows.push({
+        label: normalizeLabel(cells[0]),
+        value: htmlCellToText(cells[1]),
+      });
+    }
+  }
+
+  return rows;
+}
+
+function pickRowValue(rows, labels) {
+  const normalizedLabels = labels.map((item) => normalizeLabel(item));
+
+  for (const row of rows) {
+    for (const wanted of normalizedLabels) {
+      if (row.label === wanted || row.label.startsWith(wanted)) {
+        return row.value;
+      }
+    }
+  }
+
+  return "";
+}
+
+function parseAddressParts(addressText) {
+  const lines = String(addressText || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const lineOne = lines[0] || "";
+  const lineTwo = lines[1] || "";
+
+  let postalCode = "";
+  let municipality = "";
+  const lineTwoMatch = lineTwo.match(/^(\d{4})\s+(.+)$/);
+  if (lineTwoMatch) {
+    postalCode = lineTwoMatch[1];
+    municipality = lineTwoMatch[2];
+  }
+
+  let street = "";
+  let houseNumber = "";
+  let box = "";
+
+  const withBox = lineOne.match(/^(.*?)\s+(\d+[\w\/-]*)\s+(?:boite|boite\.|bus|bte)\s*([\w\/-]+)$/i);
+  const withoutBox = lineOne.match(/^(.*?)\s+(\d+[\w\/-]*)$/i);
+
+  if (withBox) {
+    street = withBox[1].trim();
+    houseNumber = withBox[2].trim();
+    box = withBox[3].trim();
+  } else if (withoutBox) {
+    street = withoutBox[1].trim();
+    houseNumber = withoutBox[2].trim();
+  } else {
+    street = lineOne;
+  }
+
+  return {
+    street,
+    houseNumber,
+    box,
+    postalCode,
+    municipality,
+    country: "Belgique",
+    full: lines.join(", "),
+  };
+}
+
+async function fetchBcePublicCompany(enterpriseNumber, langue) {
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+  if (!cleanNumber) {
+    return null;
+  }
+
+  const action = langue === "nl" ? "Zoeken" : "Rechercher";
+  const url = `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(action)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent": "Mozilla/5.0 (compatible; AktlyLite/1.0)",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`BCE public search HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  const rows = parseBceRows(html);
+
+  const numberRaw = pickRowValue(rows, ["Numero d'entreprise", "Numéro d'entreprise", "Ondernemingsnummer"]);
+  const denominationRaw = pickRowValue(rows, ["Denomination", "Dénomination", "Benaming"]);
+  const statusRaw = pickRowValue(rows, ["Statut", "Status"]);
+  const legalSituationRaw = pickRowValue(rows, ["Situation juridique", "Juridische situatie"]);
+  const startDateRaw = pickRowValue(rows, ["Date de debut", "Date de début", "Startdatum"]);
+  const legalFormRaw = pickRowValue(rows, ["Forme legale", "Forme légale", "Rechtsvorm"]);
+  const addressRaw = pickRowValue(rows, ["Adresse du siege", "Adresse du siège", "Adres van de zetel"]);
+
+  const number = String(numberRaw || cleanNumber).replace(/\D+/g, "") || cleanNumber;
+  const denomination = denominationRaw.split(/\n+/)[0]?.trim() || `Entreprise ${number}`;
+  const status = statusRaw.split(/\n+/)[0]?.trim() || (langue === "nl" ? "Actief" : "Actif");
+  const legalSituation = legalSituationRaw.split(/\n+/)[0]?.trim() || status;
+  const startDate = startDateRaw.split(/\n+/)[0]?.trim() || null;
+  const legalForm = legalFormRaw.split(/\n+/)[0]?.trim() || null;
+  const address = parseAddressParts(addressRaw);
+
+  return {
+    lang_entre: langue || "fr",
+    number,
+    denomination: [
+      {
+        description: [
+          { language: "fr", value: denomination },
+          { language: "nl", value: denomination },
+        ],
+      },
+    ],
+    address: address.full || (langue === "nl" ? "Adres niet beschikbaar" : "Adresse non disponible"),
+    addresses: [address],
+    enterprise: {
+      legalForm,
+      startDate,
+      vatLiable: null,
+      legalSituation,
+    },
     typeOfEnterprise: "ELP",
     juridicalSituation: {
       status: {
@@ -693,13 +898,39 @@ const server = http.createServer(async (req, res) => {
           return;
         }
       } catch (error) {
-        const fallback = makeCompanyPayload(payload?.enterprise_number, payload?.langue);
-        sendJson(res, 200, {
-          ...fallback,
-          warning: "BNB indisponible, resultat de secours utilise.",
-          bnb_error: String(error?.message || error),
-        });
-        return;
+        const bnbError = String(error?.message || error);
+        try {
+          const bcePayload = await fetchBcePublicCompany(payload?.enterprise_number, payload?.langue || "fr");
+          if (bcePayload) {
+            sendJson(res, 200, {
+              ...bcePayload,
+              warning: "BNB indisponible, donnees BCE publiques utilisees.",
+              bnb_error: bnbError,
+            });
+            return;
+          }
+        } catch (bceError) {
+          const fallback = makeCompanyPayload(payload?.enterprise_number, payload?.langue);
+          sendJson(res, 200, {
+            ...fallback,
+            warning: "BNB et BCE indisponibles, resultat de secours utilise.",
+            bnb_error: bnbError,
+            bce_error: String(bceError?.message || bceError),
+          });
+          return;
+        }
+      }
+
+      try {
+        const bcePayload = await fetchBcePublicCompany(payload?.enterprise_number, payload?.langue || "fr");
+        if (bcePayload) {
+          sendJson(res, 200, {
+            ...bcePayload,
+            warning: "Resultat BCE public utilise.",
+          });
+          return;
+        }
+      } catch {
       }
 
       sendJson(res, 200, makeCompanyPayload(payload?.enterprise_number, payload?.langue));

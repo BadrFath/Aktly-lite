@@ -3,32 +3,9 @@ import { useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const legakteCompanies = {
-  '1022158878': {
-    name: 'Entreprise 1022158878',
-    address: 'Drève Richelle 161, 1410 Waterloo',
-  },
-  '0834252359': {
-    name: 'Entreprise 0834252359',
-    address: 'Avenue Louise 54, 1050 Bruxelles',
-  },
-  '0793532155': {
-    name: 'Entreprise 0793532155',
-    address: 'Boulevard du Souverain 25, 1170 Bruxelles',
-  },
-  '0544946196': {
-    name: 'Entreprise 0544946196',
-    address: 'Rue Royale 120, 1000 Bruxelles',
-  },
-  '0478743894': {
-    name: 'Entreprise 0478743894',
-    address: 'Chaussée de Charleroi 80, 1060 Saint-Gilles',
-  },
-}
-
 const searchEndpoint =
   import.meta.env.VITE_LEGAKTE_SEARCH_ENDPOINT ??
-  'http://127.0.0.1:8000/lite/identification-entreprise/search'
+  '/api/legakte/identification-entreprise/search'
 
 const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
 
@@ -47,7 +24,6 @@ const getDescriptionValue = (items, preferredLang) => {
 
 const normalizeCompanyData = (payload, fallbackNumber, langue) => {
   const apiNumber = payload?.number ? String(payload.number) : fallbackNumber
-  const seed = legakteCompanies[apiNumber]
   const denominationDescriptions = payload?.denomination?.[0]?.description
   const statusDescriptions = payload?.juridicalSituation?.status?.description
   const firstAddress = payload?.addresses?.[0] ?? null
@@ -62,7 +38,6 @@ const normalizeCompanyData = (payload, fallbackNumber, langue) => {
     full:
       firstAddress?.full ??
       payload?.address ??
-      seed?.address ??
       'Adresse non disponible',
   }
 
@@ -71,7 +46,6 @@ const normalizeCompanyData = (payload, fallbackNumber, langue) => {
     number: apiNumber,
     company_name:
       getDescriptionValue(denominationDescriptions, langue) ??
-      seed?.name ??
       `Entreprise ${apiNumber}`,
     address: normalizedAddress.full,
     addresses: [normalizedAddress],
