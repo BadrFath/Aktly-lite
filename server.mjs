@@ -1165,13 +1165,23 @@ async function makeDirigeantsPayload(req, enterpriseNumber) {
   };
 }
 
-function authorizeLegakte(req) {
-  if (!legakteBearerToken) {
+async function authorizeLegakte(req) {
+  const authHeader = String(req.headers.authorization || "").trim();
+  const hasStaticBearer = Boolean(legakteBearerToken);
+
+  if (hasStaticBearer && authHeader === `Bearer ${legakteBearerToken}`) {
     return true;
   }
 
-  const authHeader = String(req.headers.authorization || "");
-  return authHeader === `Bearer ${legakteBearerToken}`;
+  const token = extractAccessToken(req);
+  if (token) {
+    const session = await findAccessSession(token);
+    if (session) {
+      return true;
+    }
+  }
+
+  return !hasStaticBearer;
 }
 
 function safeValue(value, fallback = "-") {
@@ -1552,7 +1562,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === "POST" && requestPath === "/api/legakte/identification-entreprise/search") {
-      if (!authorizeLegakte(req)) {
+      if (!(await authorizeLegakte(req))) {
         sendJson(res, 401, { message: "Token Legakte invalide." });
         return;
       }
@@ -1571,7 +1581,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === "GET" && requestPath === "/api/legakte/dirigeants") {
-      if (!authorizeLegakte(req)) {
+      if (!(await authorizeLegakte(req))) {
         sendJson(res, 401, { message: "Token Legakte invalide." });
         return;
       }

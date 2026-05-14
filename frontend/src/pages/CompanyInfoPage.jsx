@@ -86,6 +86,7 @@ function CompanyInfoPage() {
   const onSearchCompany = async (event) => {
     event.preventDefault()
     const normalized = enterpriseNumber.replace(/\D+/g, '')
+    const authToken = localStorage.getItem('aktly_auth_token') ?? ''
 
     setErrorMessage('')
     setIsLoading(true)
@@ -96,6 +97,7 @@ function CompanyInfoPage() {
         headers: {
           'Content-Type': 'application/json',
           ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+          ...(authToken ? { 'X-Auth-Token': authToken } : {}),
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -113,7 +115,7 @@ function CompanyInfoPage() {
       setCompanyData(normalizedData)
       localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
       localStorage.setItem('aktly_step_3', 'done')
-    } catch {
+    } catch (error) {
       const fallbackPayload = {
         number: normalized,
         lang_entre: langue,
@@ -123,8 +125,9 @@ function CompanyInfoPage() {
       setCompanyData(normalizedData)
       localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
       localStorage.setItem('aktly_step_3', 'done')
+      const details = error instanceof Error ? error.message : ''
       setErrorMessage(
-        'API Legakte indisponible ou non authentifiee. Donnees locales affichees.',
+        `API Legakte indisponible ou non authentifiee. Donnees locales affichees.${details ? ` (${details})` : ''}`,
       )
     } finally {
       setIsLoading(false)
