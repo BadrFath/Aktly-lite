@@ -1240,6 +1240,8 @@ function buildDossierDocument(documentKey, body) {
   const depositaire = body?.depositaire || {};
   const user = body?.user || {};
   const payment = body?.payment || {};
+  const language = String(body?.file_language || companyData?.lang_entre || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  const isNl = language === "nl";
 
   const companyName = resolveCompanyName(companyData);
   const enterpriseNumber = safeValue(companyData?.number);
@@ -1252,33 +1254,33 @@ function buildDossierDocument(documentKey, body) {
     .join(" ");
 
   const commonHeader = [
-    `Entreprise: ${companyName}`,
-    `Numero BCE: ${enterpriseNumber}`,
-    `Forme juridique: ${legalForm}`,
-    `Statut: ${status}`,
-    `Adresse: ${safeValue(companyAddress.full)}`,
+    `${isNl ? "Onderneming" : "Entreprise"}: ${companyName}`,
+    `${isNl ? "Ondernemingsnummer" : "Numero BCE"}: ${enterpriseNumber}`,
+    `${isNl ? "Rechtsvorm" : "Forme juridique"}: ${legalForm}`,
+    `${isNl ? "Status" : "Statut"}: ${status}`,
+    `${isNl ? "Adres" : "Adresse"}: ${safeValue(companyAddress.full)}`,
   ];
 
   if (documentKey === "formulaire1entr") {
     const content = [
-      "FORMULAIRE 1 - IDENTIFICATION ENTREPRISE",
+      isNl ? "FORMULIER 1 - IDENTIFICATIE ONDERNEMING" : "FORMULAIRE 1 - IDENTIFICATION ENTREPRISE",
       "",
       ...commonHeader,
       "",
-      "Adresse detaillee:",
-      `- Rue: ${safeValue(companyAddress.street)}`,
-      `- Numero: ${safeValue(companyAddress.houseNumber)}`,
-      `- Boite: ${safeValue(companyAddress.box)}`,
-      `- Code postal: ${safeValue(companyAddress.postalCode)}`,
-      `- Commune: ${safeValue(companyAddress.municipality)}`,
-      `- Pays: ${safeValue(companyAddress.country)}`,
+      isNl ? "Adresgegevens:" : "Adresse detaillee:",
+      `- ${isNl ? "Straat" : "Rue"}: ${safeValue(companyAddress.street)}`,
+      `- ${isNl ? "Nummer" : "Numero"}: ${safeValue(companyAddress.houseNumber)}`,
+      `- ${isNl ? "Bus" : "Boite"}: ${safeValue(companyAddress.box)}`,
+      `- ${isNl ? "Postcode" : "Code postal"}: ${safeValue(companyAddress.postalCode)}`,
+      `- ${isNl ? "Gemeente" : "Commune"}: ${safeValue(companyAddress.municipality)}`,
+      `- ${isNl ? "Land" : "Pays"}: ${safeValue(companyAddress.country)}`,
       "",
-      `Date debut entreprise: ${startDate}`,
-      `Date changement: ${safeValue(addressInfo?.dateChangement)}`,
+      `${isNl ? "Startdatum onderneming" : "Date debut entreprise"}: ${startDate}`,
+      `${isNl ? "Wijzigingsdatum" : "Date changement"}: ${safeValue(addressInfo?.dateChangement)}`,
     ].join("\n");
 
     return {
-      fileName: "formulaire1entr-rempli.txt",
+      fileName: isNl ? "formulier1ingevuld.txt" : "formulaire1entr-rempli.txt",
       mimeType: "text/plain; charset=utf-8",
       content,
     };
@@ -1286,21 +1288,21 @@ function buildDossierDocument(documentKey, body) {
 
   if (documentKey === "formulaire2entr") {
     const content = [
-      "FORMULAIRE 2 - MISE A JOUR ENTREPRISE",
+      isNl ? "FORMULIER 2 - ONDERNEMING UPDATE" : "FORMULAIRE 2 - MISE A JOUR ENTREPRISE",
       "",
       ...commonHeader,
       "",
-      "Informations complementaires:",
-      `- Date de changement: ${safeValue(addressInfo?.dateChangement)}`,
-      `- Date assemblee generale: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
-      `- Depositaire: ${safeValue(depositaireName)}`,
-      `- Role depositaire: ${safeValue(depositaire?.role || "Administrateur")}`,
-      `- Email utilisateur: ${safeValue(user?.email)}`,
+      isNl ? "Aanvullende informatie:" : "Informations complementaires:",
+      `- ${isNl ? "Wijzigingsdatum" : "Date de changement"}: ${safeValue(addressInfo?.dateChangement)}`,
+      `- ${isNl ? "Datum algemene vergadering" : "Date assemblee generale"}: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
+      `- ${isNl ? "Bewaarnemer" : "Depositaire"}: ${safeValue(depositaireName)}`,
+      `- ${isNl ? "Rol bewaarnemer" : "Role depositaire"}: ${safeValue(depositaire?.role || "Administrateur")}`,
+      `- ${isNl ? "E-mail gebruiker" : "Email utilisateur"}: ${safeValue(user?.email)}`,
       `- Pack: ${safeValue(payment?.pack?.slug)}`,
     ].join("\n");
 
     return {
-      fileName: "formulaire2entr-rempli.txt",
+      fileName: isNl ? "formulier2ingevuld.txt" : "formulaire2entr-rempli.txt",
       mimeType: "text/plain; charset=utf-8",
       content,
     };
@@ -1308,19 +1310,19 @@ function buildDossierDocument(documentKey, body) {
 
   if (documentKey === "attestation-identite") {
     const content = [
-      "ATTESTATION D'IDENTITE - MODELE 1",
+      isNl ? "IDENTITEITSATTEST - MODEL 1" : "ATTESTATION D'IDENTITE - MODELE 1",
       "",
       ...commonHeader,
       "",
-      `Representant: ${safeValue(depositaireName)}`,
-      `Fonction: ${safeValue(depositaire?.role || "Administrateur")}`,
-      `Date de constitution/debut: ${startDate}`,
-      `Exercice social: ${safeValue(companyData?.enterprise?.fiscalYear || "Non renseigne")}`,
-      `Assemblee generale: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
+      `${isNl ? "Vertegenwoordiger" : "Representant"}: ${safeValue(depositaireName)}`,
+      `${isNl ? "Functie" : "Fonction"}: ${safeValue(depositaire?.role || "Administrateur")}`,
+      `${isNl ? "Oprichtings/startdatum" : "Date de constitution/debut"}: ${startDate}`,
+      `${isNl ? "Boekjaar" : "Exercice social"}: ${safeValue(companyData?.enterprise?.fiscalYear || "Non renseigne")}`,
+      `${isNl ? "Algemene vergadering" : "Assemblee generale"}: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
     ].join("\n");
 
     return {
-      fileName: "attestation-identite-remplie.txt",
+      fileName: isNl ? "identiteitsattest-ingevuld.txt" : "attestation-identite-remplie.txt",
       mimeType: "text/plain; charset=utf-8",
       content,
     };
@@ -1328,23 +1330,25 @@ function buildDossierDocument(documentKey, body) {
 
   if (documentKey === "pv-assemblee-generale") {
     const content = [
-      "PROCES-VERBAL DE L'ASSEMBLEE GENERALE",
+      isNl ? "PROCES-VERBAAL VAN DE ALGEMENE VERGADERING" : "PROCES-VERBAL DE L'ASSEMBLEE GENERALE",
       "",
-      `Societe: ${companyName}`,
-      `Numero BCE: ${enterpriseNumber}`,
-      `Siege social: ${safeValue(companyAddress.full)}`,
-      `Date de l'assemblee: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
-      `Date de changement: ${safeValue(addressInfo?.dateChangement)}`,
+      `${isNl ? "Vennootschap" : "Societe"}: ${companyName}`,
+      `${isNl ? "Ondernemingsnummer" : "Numero BCE"}: ${enterpriseNumber}`,
+      `${isNl ? "Maatschappelijke zetel" : "Siege social"}: ${safeValue(companyAddress.full)}`,
+      `${isNl ? "Datum vergadering" : "Date de l'assemblee"}: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
+      `${isNl ? "Wijzigingsdatum" : "Date de changement"}: ${safeValue(addressInfo?.dateChangement)}`,
       "",
-      "Participants/dirigeants:",
+      isNl ? "Deelnemers/bestuurders:" : "Participants/dirigeants:",
       `- ${safeValue(depositaireName || user?.name || "Representant")}`,
       "",
-      "Decision:",
-      "L'assemblee approuve la mise a jour du siege social et les formalites associees.",
+      `${isNl ? "Beslissing" : "Decision"}:`,
+      isNl
+        ? "De vergadering keurt de zetelwijziging en de bijhorende formaliteiten goed."
+        : "L'assemblee approuve la mise a jour du siege social et les formalites associees.",
     ].join("\n");
 
     return {
-      fileName: "pv-assemblee-generale-rempli.txt",
+      fileName: isNl ? "pv-algemene-vergadering-ingevuld.txt" : "pv-assemblee-generale-rempli.txt",
       mimeType: "text/plain; charset=utf-8",
       content,
     };

@@ -78,7 +78,7 @@ function CompanyInfoPage() {
   }, [])
 
   const [enterpriseNumber, setEnterpriseNumber] = useState('')
-  const [langue, setLangue] = useState('fr')
+  const [langue, setLangue] = useState(() => localStorage.getItem('aktly_documents_lang') || 'fr')
   const [companyData, setCompanyData] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -87,6 +87,9 @@ function CompanyInfoPage() {
     event.preventDefault()
     const normalized = enterpriseNumber.replace(/\D+/g, '')
     const authToken = localStorage.getItem('aktly_auth_token') ?? ''
+    const apiUiLang = 'fr'
+
+    localStorage.setItem('aktly_documents_lang', langue)
 
     setErrorMessage('')
     setIsLoading(true)
@@ -102,7 +105,7 @@ function CompanyInfoPage() {
         credentials: 'include',
         body: JSON.stringify({
           enterprise_number: normalized,
-          langue,
+          langue: apiUiLang,
         }),
       })
 
@@ -111,17 +114,17 @@ function CompanyInfoPage() {
       }
 
       const payload = await response.json()
-      const normalizedData = normalizeCompanyData(payload, normalized, langue)
+      const normalizedData = normalizeCompanyData(payload, normalized, apiUiLang)
       setCompanyData(normalizedData)
       localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
       localStorage.setItem('aktly_step_3', 'done')
     } catch (error) {
       const fallbackPayload = {
         number: normalized,
-        lang_entre: langue,
+        lang_entre: apiUiLang,
       }
 
-      const normalizedData = normalizeCompanyData(fallbackPayload, normalized, langue)
+      const normalizedData = normalizeCompanyData(fallbackPayload, normalized, apiUiLang)
       setCompanyData(normalizedData)
       localStorage.setItem('aktly_company_data', JSON.stringify(normalizedData))
       localStorage.setItem('aktly_step_3', 'done')
@@ -172,7 +175,7 @@ function CompanyInfoPage() {
           </label>
 
           <label className="block text-sm font-medium text-slate-200">
-            Selectionnez la langue
+            Selectionnez la langue des fichiers
             <select
               value={langue}
               onChange={(event) => setLangue(event.target.value)}

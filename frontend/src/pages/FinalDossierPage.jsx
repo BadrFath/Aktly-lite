@@ -67,6 +67,10 @@ function FinalDossierPage() {
     return raw ? JSON.parse(raw) : null
   }, [])
 
+  const documentsLang = useMemo(() => {
+    return localStorage.getItem('aktly_documents_lang') || 'fr'
+  }, [])
+
   const onPrintDossier = () => {
     window.print()
   }
@@ -99,6 +103,7 @@ function FinalDossierPage() {
           depositaire: depositaire ?? {},
           user: user ?? {},
           payment: payment ?? {},
+          file_language: documentsLang,
         }),
       })
 
