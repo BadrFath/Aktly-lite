@@ -668,25 +668,43 @@ async function fetchBceSoapCompany(enterpriseNumber, langue) {
     return { company: cached.company, dirigeants: cached.dirigeants };
   }
 
-  const soapEnvelope = buildBceSoapEnvelope(cleanNumber, langue || "fr");
-  const response = await fetch(bceSoapServiceUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml;charset=UTF-8",
-      SOAPAction: `"${bceSoapAction}"`,
-      Accept: "text/xml, application/xml",
-    },
-    body: soapEnvelope,
-  });
+  let lastError = null;
+  const requestedLang = String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  const attemptLanguages = requestedLang === "fr" ? ["fr", "nl"] : ["nl", "fr"];
 
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`BCE SOAP HTTP ${response.status}`);
+  for (const attemptLang of attemptLanguages) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        const soapEnvelope = buildBceSoapEnvelope(cleanNumber, attemptLang);
+        const response = await fetch(bceSoapServiceUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/xml;charset=UTF-8",
+            SOAPAction: `"${bceSoapAction}"`,
+            Accept: "text/xml, application/xml",
+          },
+          body: soapEnvelope,
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        const body = await response.text();
+        if (!response.ok) {
+          throw new Error(`BCE SOAP HTTP ${response.status}`);
+        }
+
+        const parsed = parseBceEnterpriseResponse(body, cleanNumber, attemptLang);
+        writeBceCache(cleanNumber, attemptLang, parsed.company, parsed.dirigeants);
+        if (attemptLang !== requestedLang) {
+          writeBceCache(cleanNumber, requestedLang, parsed.company, parsed.dirigeants);
+        }
+        return parsed;
+      } catch (error) {
+        lastError = error;
+      }
+    }
   }
 
-  const parsed = parseBceEnterpriseResponse(body, cleanNumber, langue || "fr");
-  writeBceCache(cleanNumber, langue || "fr", parsed.company, parsed.dirigeants);
-  return parsed;
+  throw new Error(String(lastError?.message || lastError || "BCE SOAP indisponible"));
 }
 
 function mapAktlyMainCompanyPayload(enterpriseNumber, langue) {
@@ -907,21 +925,65 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
     return null;
   }
 
-  const action = langue === "nl" ? "Zoeken" : "Rechercher";
-  const url = `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(action)}`;
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Accept: "text/html,application/xhtml+xml",
-      "User-Agent": "Mozilla/5.0 (compatible; AktlyLite/1.0)",
+  const requestedLang = String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  const requests = [
+    {
+      method: "GET",
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(requestedLang === "nl" ? "Zoeken" : "Rechercher")}`,
     },
-  });
+    {
+      method: "GET",
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Rechercher")}`,
+    },
+    {
+      method: "GET",
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Zoeken")}`,
+    },
+    {
+      method: "POST",
+      url: "https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html",
+      body: new URLSearchParams({
+        nummer: cleanNumber,
+        actionLu: requestedLang === "nl" ? "Zoeken" : "Rechercher",
+      }).toString(),
+    },
+  ];
 
-  if (!response.ok) {
-    throw new Error(`BCE public search HTTP ${response.status}`);
+  let html = "";
+  let lastError = null;
+
+  for (const request of requests) {
+    try {
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent": "Mozilla/5.0 (compatible; AktlyLite/1.0)",
+          ...(request.method === "POST"
+            ? { "Content-Type": "application/x-www-form-urlencoded" }
+            : {}),
+        },
+        ...(request.body ? { body: request.body } : {}),
+        signal: AbortSignal.timeout(12_000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      html = await response.text();
+      if (/<table|Ondernemingsnummer|Num[eé]ro d'entreprise|Benaming|D[eé]nomination/i.test(html)) {
+        break;
+      }
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  const html = await response.text();
+  if (!html) {
+    throw new Error(String(lastError?.message || lastError || "BCE public indisponible"));
+  }
+
   const rows = parseBceRows(html);
 
   const numberRaw = pickRowValue(rows, ["Numero d'entreprise", "Numéro d'entreprise", "Ondernemingsnummer"]);
@@ -936,12 +998,12 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
   const denomination = cleanBceLines(denominationRaw)[0] || `Entreprise ${number}`;
   const status = cleanBceLines(statusRaw)[0] || (langue === "nl" ? "Actief" : "Actif");
   const legalSituation = cleanBceLines(legalSituationRaw)[0] || status;
-  const startDate = cleanBceLines(startDateRaw)[0] || extractStartDateFromText(addressRaw) || null;
+  const startDate = cleanBceLines(startDateRaw)[0] || extractStartDateFromText(startDateRaw) || extractStartDateFromText(addressRaw) || null;
   const legalForm = cleanBceLines(legalFormRaw)[0] || null;
   const address = parseAddressParts(cleanBceLines(addressRaw).join("\n"));
 
   return {
-    lang_entre: langue || "fr",
+    lang_entre: requestedLang,
     number,
     denomination: [
       {
@@ -951,7 +1013,7 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
         ],
       },
     ],
-    address: address.full || (langue === "nl" ? "Adres niet beschikbaar" : "Adresse non disponible"),
+    address: address.full || (requestedLang === "nl" ? "Adres niet beschikbaar" : "Adresse non disponible"),
     addresses: [address],
     enterprise: {
       legalForm,
@@ -962,7 +1024,7 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
     typeOfEnterprise: "ELP",
     juridicalSituation: {
       status: {
-        description: [{ language: langue || "fr", value: status }],
+        description: [{ language: requestedLang, value: status }],
       },
     },
   };
