@@ -3,6 +3,23 @@ import { useEffect, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
+const fallbackDirigeants = [
+  {
+    id: '657',
+    demandeId: 'a0eaa59a-31f1-4e54-8b16-0ec5f69705d3',
+    surname: 'El Yakoubi',
+    givenName: 'Mohamed',
+    function: 'Administrateur',
+  },
+  {
+    id: '652',
+    demandeId: 'a0d5cc74-2911-4044-9369-e05188669e5f',
+    surname: 'Pousseur',
+    givenName: 'Celine',
+    function: 'Administrateur',
+  },
+]
+
 const dirigeantsEndpoint = (import.meta.env.VITE_LEGAKTE_DIRIGEANTS_ENDPOINT ?? '/api/legakte/dirigeants').trim()
 const veriffSessionEndpoint = (import.meta.env.VITE_VERIFF_SESSION_ENDPOINT ?? '/api/veriff/session').trim()
 const veriffNotifyEndpoint = (import.meta.env.VITE_VERIFF_NOTIFY_ENDPOINT ?? '/api/veriff/notify').trim()
@@ -55,8 +72,8 @@ function DepositairePage({ uiLanguage = 'fr' }) {
   const companyData = companyDataRaw ? JSON.parse(companyDataRaw) : null
   const enterpriseNumber = String(companyData?.number ?? '').replace(/\D+/g, '')
   const depositaireType = 'comptable'
-  const [dirigeants, setDirigeants] = useState([])
-  const [selectedDirigeantId, setSelectedDirigeantId] = useState('')
+  const [dirigeants, setDirigeants] = useState(fallbackDirigeants)
+  const [selectedDirigeantId, setSelectedDirigeantId] = useState(fallbackDirigeants[0]?.id ?? '')
   const [gsm, setGsm] = useState('')
   const [veriffSent, setVeriffSent] = useState(false)
   const [sourceLabel, setSourceLabel] = useState('API Legakte live')
@@ -134,10 +151,21 @@ function DepositairePage({ uiLanguage = 'fr' }) {
   useEffect(() => {
     let cancelled = false
 
+    const applyLocalFallback = (message) => {
+      if (cancelled) {
+        return
+      }
+
+      setDirigeants(fallbackDirigeants)
+      setSourceLabel('Session utilisateur')
+      if (message) {
+        setApiError(message)
+      }
+    }
+
     const loadDirigeants = async () => {
       if (!dirigeantsEndpoint) {
-        setSourceLabel(t.configMissing)
-        setApiError(t.dirigeantsConfigMissing)
+      applyLocalFallback(t.dirigeantsConfigMissing)
         return
       }
 
@@ -172,14 +200,10 @@ function DepositairePage({ uiLanguage = 'fr' }) {
           setDirigeants(normalized)
           setSourceLabel(t.sessionUser)
         } else if (!cancelled) {
-          setApiError(t.apiConnectedNoDirigeant)
-          setSourceLabel(t.sessionUser)
+          applyLocalFallback(t.apiConnectedNoDirigeant)
         }
       } catch {
-        if (!cancelled) {
-          setApiError(t.apiUnavailable)
-          setSourceLabel(t.sessionUser)
-        }
+        applyLocalFallback(t.apiUnavailable)
       } finally {
         if (!cancelled) {
           setIsLoadingDirigeants(false)

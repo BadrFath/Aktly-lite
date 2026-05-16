@@ -12,9 +12,21 @@ class BceSoapService
 
     public function __construct(?string $url = null, ?string $username = null, ?string $password = null)
     {
-        $this->url = $url ?? (string) getenv('BCE_SOAP_URL');
-        $this->username = $username ?? (string) getenv('BCE_SOAP_USERNAME');
-        $this->password = $password ?? (string) getenv('BCE_SOAP_PASSWORD');
+        $this->url = $url ?? $this->resolveEnv(['BCE_SOAP_URL', 'BCE_URL']);
+        $this->username = $username ?? $this->resolveEnv(['BCE_SOAP_USERNAME', 'BCE_USERNAME']);
+        $this->password = $password ?? $this->resolveEnv(['BCE_SOAP_PASSWORD', 'BCE_PASSWORD']);
+    }
+
+    private function resolveEnv(array $keys): string
+    {
+        foreach ($keys as $key) {
+            $value = getenv($key);
+            if ($value !== false && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+
+        return '';
     }
 
     public function isConfigured(): bool

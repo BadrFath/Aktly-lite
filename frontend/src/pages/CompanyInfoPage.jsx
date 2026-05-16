@@ -38,6 +38,7 @@ const normalizeCompanyData = (payload, fallbackNumber, langue) => {
     full:
       firstAddress?.full ??
       payload?.address ??
+      payload?.headOfficeAddress ??
       'Adresse non disponible',
   }
 
@@ -289,6 +290,9 @@ function CompanyInfoPage({ uiLanguage = 'fr' }) {
             </p>
             <p className="mt-1 text-xs text-slate-400">
               {t.legalForm}: {legalForm || '-'} | {t.startDate}: {startDate || '-'}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Forme juridique: {legalForm || '-'} | Date de debut: {startDate || '-'}
             </p>
 
             <div className="mt-4 flex items-center justify-between gap-3">

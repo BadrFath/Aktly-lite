@@ -85,6 +85,9 @@ function AppLayout() {
         })
 
         if (!response.ok) {
+          if (response.status === 401) {
+            localStorage.removeItem('aktly_auth_token')
+          }
           throw new Error(`HTTP ${response.status}`)
         }
 
