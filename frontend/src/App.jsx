@@ -10,6 +10,7 @@ import StripePage from './pages/StripePage'
 import StripeResultPage from './pages/StripeResultPage'
 
 const navRoutes = ['/stripe', '/company', '/depositaire', '/adresse-info', '/dossier-final']
+const privilegedEmails = new Set(['badrfath16@gmail.com', 'contact@legakte.be'])
 
 const buildNavItems = (uiLanguage) =>
   uiLanguage === 'nl'
@@ -39,7 +40,9 @@ function AppLayout() {
   const [showFilesLangPrompt, setShowFilesLangPrompt] = useState(false)
   const [filesLanguage, setFilesLanguage] = useState(localStorage.getItem('aktly_files_language') || 'fr')
   const [pendingRoute, setPendingRoute] = useState('')
-  const [privilegedAccess, setPrivilegedAccess] = useState(false)
+  const [privilegedAccess, setPrivilegedAccess] = useState(
+    localStorage.getItem('aktly_privileged_access') === 'true',
+  )
   const navItems = buildNavItems(uiLanguage)
   const t = uiLanguage === 'nl'
     ? {
@@ -68,9 +71,21 @@ function AppLayout() {
 
     const loadAccessScope = async () => {
       const token = localStorage.getItem('aktly_auth_token') || ''
+      const localUser = (() => {
+        const raw = localStorage.getItem('aktly_user')
+        return raw ? JSON.parse(raw) : null
+      })()
+      const localEmail = String(localUser?.email || '').trim().toLowerCase()
+
       if (!token) {
         if (!cancelled) {
-          setPrivilegedAccess(false)
+          const isAllowed = privilegedEmails.has(localEmail)
+          setPrivilegedAccess(isAllowed)
+          localStorage.setItem('aktly_privileged_access', isAllowed ? 'true' : 'false')
+          if (isAllowed) {
+            localStorage.setItem('aktly_payment_verified', 'true')
+            localStorage.setItem('aktly_step_2', 'done')
+          }
         }
         return
       }
@@ -93,11 +108,24 @@ function AppLayout() {
 
         const payload = await response.json().catch(() => ({}))
         if (!cancelled) {
-          setPrivilegedAccess(Boolean(payload?.privileged))
+          const apiEmail = String(payload?.email || '').trim().toLowerCase()
+          const isAllowed = Boolean(payload?.privileged) || privilegedEmails.has(apiEmail) || privilegedEmails.has(localEmail)
+          setPrivilegedAccess(isAllowed)
+          localStorage.setItem('aktly_privileged_access', isAllowed ? 'true' : 'false')
+          if (isAllowed) {
+            localStorage.setItem('aktly_payment_verified', 'true')
+            localStorage.setItem('aktly_step_2', 'done')
+          }
         }
       } catch {
         if (!cancelled) {
-          setPrivilegedAccess(false)
+          const isAllowed = privilegedEmails.has(localEmail)
+          setPrivilegedAccess(isAllowed)
+          localStorage.setItem('aktly_privileged_access', isAllowed ? 'true' : 'false')
+          if (isAllowed) {
+            localStorage.setItem('aktly_payment_verified', 'true')
+            localStorage.setItem('aktly_step_2', 'done')
+          }
         }
       }
     }
