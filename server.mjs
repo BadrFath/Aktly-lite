@@ -1188,33 +1188,15 @@ async function fetchBnbCompany(enterpriseNumber, langue) {
   throw new Error(lastError || "Aucune route BNB valide repond");
 }
 
-function splitNameFromEmail(email) {
-  const localPart = String(email || "").split("@")[0] || "";
-  const words = localPart
-    .split(/[._-]+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1));
-
-  if (words.length === 0) {
-    return { given_name: "Utilisateur", nom: "Aktly" };
-  }
-
-  if (words.length === 1) {
-    return { given_name: words[0], nom: "" };
-  }
-
-  return {
-    given_name: words[0],
-    nom: words.slice(1).join(" "),
-  };
-}
-
 async function makeDirigeantsPayload(req, enterpriseNumber) {
   const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+
   const cacheFr = readBceCache(cleanNumber, "fr");
   const cacheNl = readBceCache(cleanNumber, "nl");
-  const cachedDirigeants = cacheFr?.dirigeants?.length ? cacheFr.dirigeants : cacheNl?.dirigeants;
+  const cachedDirigeants =
+    cacheFr?.dirigeants?.length
+      ? cacheFr.dirigeants
+      : cacheNl?.dirigeants;
 
   if (Array.isArray(cachedDirigeants) && cachedDirigeants.length > 0) {
     return { data: cachedDirigeants };
@@ -1223,32 +1205,24 @@ async function makeDirigeantsPayload(req, enterpriseNumber) {
   if (cleanNumber) {
     try {
       const fromBce = await fetchBceSoapCompany(cleanNumber, "fr");
-      if (Array.isArray(fromBce?.dirigeants) && fromBce.dirigeants.length > 0) {
+
+      if (
+        Array.isArray(fromBce?.dirigeants) &&
+        fromBce.dirigeants.length > 0
+      ) {
         return { data: fromBce.dirigeants };
       }
-    } catch {
-      // Keep existing fallback when BCE has no function data.
+    } catch (error) {
+      console.error(
+        "Erreur BCE dirigeants:",
+        error?.message || error
+      );
     }
   }
 
-  const token = extractAccessToken(req);
-  const session = token ? await findAccessSession(token) : null;
-
-  if (!session?.email) {
-    return { data: [] };
-  }
-
-  const parsed = splitNameFromEmail(session.email);
   return {
-    data: [
-      {
-        id: session.userId || crypto.randomUUID(),
-        demande_id: String(enterpriseNumber || "N/A"),
-        given_name: parsed.given_name,
-        nom: parsed.nom,
-        role: "Administrateur",
-      },
-    ],
+    data: [],
+    source: "bce-no-results",
   };
 }
 
