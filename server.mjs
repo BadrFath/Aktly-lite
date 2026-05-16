@@ -676,6 +676,14 @@ async function fetchBceSoapCompany(enterpriseNumber, langue) {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         const soapEnvelope = buildBceSoapEnvelope(cleanNumber, attemptLang);
+        console.log(
+          "SOAP URL:",
+          process.env.BCE_SOAP_URL
+        );
+        console.log(
+          "Entreprise:",
+          cleanNumber
+        );
         const response = await fetch(bceSoapServiceUrl, {
           method: "POST",
           headers: {
