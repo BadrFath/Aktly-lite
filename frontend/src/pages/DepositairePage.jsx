@@ -3,23 +3,6 @@ import { useEffect, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const fallbackDirigeants = [
-  {
-    id: '657',
-    demandeId: 'a0eaa59a-31f1-4e54-8b16-0ec5f69705d3',
-    surname: 'El Yakoubi',
-    givenName: 'Mohamed',
-    function: 'Administrateur',
-  },
-  {
-    id: '652',
-    demandeId: 'a0d5cc74-2911-4044-9369-e05188669e5f',
-    surname: 'Pousseur',
-    givenName: 'Celine',
-    function: 'Administrateur',
-  },
-]
-
 const dirigeantsEndpoint = (import.meta.env.VITE_LEGAKTE_DIRIGEANTS_ENDPOINT ?? '/api/legakte/dirigeants').trim()
 const veriffSessionEndpoint = (import.meta.env.VITE_VERIFF_SESSION_ENDPOINT ?? '/api/veriff/session').trim()
 const veriffNotifyEndpoint = (import.meta.env.VITE_VERIFF_NOTIFY_ENDPOINT ?? '/api/veriff/notify').trim()
@@ -72,8 +55,9 @@ function DepositairePage({ uiLanguage = 'fr' }) {
   const companyData = companyDataRaw ? JSON.parse(companyDataRaw) : null
   const enterpriseNumber = String(companyData?.number ?? '').replace(/\D+/g, '')
   const depositaireType = 'comptable'
-  const [dirigeants, setDirigeants] = useState(fallbackDirigeants)
-  const [selectedDirigeantId, setSelectedDirigeantId] = useState(fallbackDirigeants[0]?.id ?? '')
+  const [apiDirigeants, setApiDirigeants] = useState([])
+  const dirigeants = apiDirigeants ?? [];
+  const [selectedDirigeantId, setSelectedDirigeantId] = useState('')
   const [gsm, setGsm] = useState('')
   const [veriffSent, setVeriffSent] = useState(false)
   const [sourceLabel, setSourceLabel] = useState('API Legakte live')
@@ -156,7 +140,7 @@ function DepositairePage({ uiLanguage = 'fr' }) {
         return
       }
 
-      setDirigeants(fallbackDirigeants)
+      setApiDirigeants([])
       setSourceLabel('Session utilisateur')
       if (message) {
         setApiError(message)
@@ -197,7 +181,7 @@ function DepositairePage({ uiLanguage = 'fr' }) {
           .filter((row) => row.givenName || row.surname)
 
         if (!cancelled && normalized.length > 0) {
-          setDirigeants(normalized)
+          setApiDirigeants(normalized)
           setSourceLabel(t.sessionUser)
         } else if (!cancelled) {
           applyLocalFallback(t.apiConnectedNoDirigeant)
