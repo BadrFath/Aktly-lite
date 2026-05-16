@@ -1201,6 +1201,11 @@ async function makeDirigeantsPayload(req, enterpriseNumber) {
             "fr"
         );
 
+      console.log(
+         "BCE dirigeants:",
+         JSON.stringify(fromBce,null,2)
+      );
+
       if (
         Array.isArray(
             fromBce?.dirigeants
@@ -1217,7 +1222,7 @@ async function makeDirigeantsPayload(req, enterpriseNumber) {
   } catch(error){
 
       console.error(
-        "BCE:",
+        "Erreur BCE:",
         error.message
       );
   }
