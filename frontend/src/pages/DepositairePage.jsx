@@ -135,21 +135,13 @@ function DepositairePage({ uiLanguage = 'fr' }) {
   useEffect(() => {
     let cancelled = false
 
-    const applyLocalFallback = (message) => {
-      if (cancelled) {
-        return
-      }
-
-      setApiDirigeants([])
-      setSourceLabel('Session utilisateur')
-      if (message) {
-        setApiError(message)
-      }
-    }
-
     const loadDirigeants = async () => {
       if (!dirigeantsEndpoint) {
-      applyLocalFallback(t.dirigeantsConfigMissing)
+        if (!cancelled) {
+          setApiDirigeants([])
+          setSourceLabel(t.configMissing)
+          setApiError(t.dirigeantsConfigMissing)
+        }
         return
       }
 
@@ -182,12 +174,18 @@ function DepositairePage({ uiLanguage = 'fr' }) {
 
         if (!cancelled && normalized.length > 0) {
           setApiDirigeants(normalized)
-          setSourceLabel(t.sessionUser)
+          setSourceLabel('API Legakte live')
         } else if (!cancelled) {
-          applyLocalFallback(t.apiConnectedNoDirigeant)
+          setApiDirigeants([])
+          setSourceLabel('API Legakte live')
+          setApiError(t.apiConnectedNoDirigeant)
         }
       } catch {
-        applyLocalFallback(t.apiUnavailable)
+        if (!cancelled) {
+          setApiDirigeants([])
+          setSourceLabel('API Legakte live')
+          setApiError(t.apiUnavailable)
+        }
       } finally {
         if (!cancelled) {
           setIsLoadingDirigeants(false)
@@ -358,6 +356,11 @@ function DepositairePage({ uiLanguage = 'fr' }) {
               onChange={(event) => setSelectedDirigeantId(event.target.value)}
               className="wow-select mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 outline-none transition focus:border-fuchsia-300"
             >
+              {dirigeants.length === 0 && (
+                <option value="" disabled>
+                  {t.noDirigeant}
+                </option>
+              )}
               {dirigeants.map((dirigeant) => (
                 <option key={dirigeant.id} value={dirigeant.id}>
                   {dirigeant.givenName} {dirigeant.surname} - {dirigeant.function}
