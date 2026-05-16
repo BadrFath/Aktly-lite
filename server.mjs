@@ -1038,6 +1038,127 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
   };
 }
 
+function parseDirigeantName(fullName) {
+  const cleaned = String(fullName || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) {
+    return { givenName: "", surname: "" };
+  }
+
+  if (cleaned.includes(",")) {
+    const [left, right] = cleaned.split(",", 2);
+    return {
+      givenName: String(right || "").trim(),
+      surname: String(left || "").trim(),
+    };
+  }
+
+  const parts = cleaned.split(/\s+/);
+  const givenName = parts.shift() || "";
+  const surname = parts.join(" ");
+  return { givenName, surname };
+}
+
+function parseBcePublicDirigeantsFromHtml(html, enterpriseNumber) {
+  const source = String(html || "");
+  if (!source) {
+    return [];
+  }
+
+  const sectionMatch = source.match(/<h2>\s*(?:Fonctions|Functies)\s*<\/h2>([\s\S]*?)(?:<h2>|<\/table>|<\/body>)/i);
+  if (!sectionMatch?.[1]) {
+    return [];
+  }
+
+  const section = sectionMatch[1];
+  const rows = [];
+  const rowRegex = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<\/tr>/gi;
+  let match;
+
+  while ((match = rowRegex.exec(section)) !== null) {
+    const roleRaw = htmlCellToText(match[1]);
+    const nameRaw = htmlCellToText(match[2]);
+    const role = cleanBceLines(roleRaw)[0] || "Administrateur";
+    const normalizedName = cleanBceLines(nameRaw).join(" ").trim();
+    const { givenName, surname } = parseDirigeantName(normalizedName);
+
+    if (!givenName && !surname) {
+      continue;
+    }
+
+    rows.push({
+      id: `${enterpriseNumber}-${rows.length + 1}`,
+      demande_id: String(enterpriseNumber || ""),
+      given_name: givenName,
+      nom: surname,
+      role,
+    });
+  }
+
+  return rows;
+}
+
+async function fetchBcePublicDirigeants(enterpriseNumber, langue) {
+  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+  if (!cleanNumber) {
+    return [];
+  }
+
+  const requestedLang = String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  const requests = [
+    {
+      method: "GET",
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(requestedLang === "nl" ? "Zoeken" : "Rechercher")}`,
+    },
+    {
+      method: "GET",
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Rechercher")}`,
+    },
+    {
+      method: "GET",
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Zoeken")}`,
+    },
+    {
+      method: "POST",
+      url: "https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html",
+      body: new URLSearchParams({
+        nummer: cleanNumber,
+        actionLu: requestedLang === "nl" ? "Zoeken" : "Rechercher",
+      }).toString(),
+    },
+  ];
+
+  for (const request of requests) {
+    try {
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent": "Mozilla/5.0 (compatible; AktlyLite/1.0)",
+          ...(request.method === "POST"
+            ? { "Content-Type": "application/x-www-form-urlencoded" }
+            : {}),
+        },
+        ...(request.body ? { body: request.body } : {}),
+        signal: AbortSignal.timeout(12_000),
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const html = await response.text();
+      const dirigeants = parseBcePublicDirigeantsFromHtml(html, cleanNumber);
+      if (dirigeants.length > 0) {
+        return dirigeants;
+      }
+    } catch {
+      // Keep trying other public BCE request variants.
+    }
+  }
+
+  return [];
+}
+
 function normalizeBnbCompanyPayload(raw, enterpriseNumber, langue) {
   const number = String(
     raw?.number ||
@@ -1233,6 +1354,14 @@ async function makeDirigeantsPayload(req, enterpriseNumber) {
         "Erreur BCE:",
         error.message
       );
+  }
+
+  const fromPublic = await fetchBcePublicDirigeants(cleanNumber, "fr");
+  if (fromPublic.length > 0) {
+    return {
+      data: fromPublic,
+      source: "bce-public",
+    };
   }
 
   return {
@@ -1664,15 +1793,6 @@ const server = http.createServer(async (req, res) => {
             return;
           }
         } catch (publicError) {
-          const localPayload = mapAktlyMainCompanyPayload(enterpriseNumber, requestedLang);
-          if (localPayload) {
-            sendJson(res, 200, {
-              ...localPayload,
-              warning: "BCE indisponible, donnees locales Aktly-main utilisees en secours.",
-            });
-            return;
-          }
-
           sendJson(res, 502, {
             message: "Impossible de recuperer les donnees BCE pour ce numero.",
             details: `SOAP: ${String(soapError?.message || soapError)} | Public: ${String(publicError?.message || publicError)}`,
