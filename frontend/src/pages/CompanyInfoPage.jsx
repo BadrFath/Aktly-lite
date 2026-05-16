@@ -131,7 +131,7 @@ function CompanyInfoPage({ uiLanguage = 'fr' }) {
     event.preventDefault()
     const normalized = enterpriseNumber.replace(/\D+/g, '')
     const authToken = localStorage.getItem('aktly_auth_token') ?? ''
-    const apiUiLang = 'fr'
+    const apiUiLang = langue === 'nl' ? 'nl' : 'fr'
 
     localStorage.setItem('aktly_documents_lang', langue)
 
@@ -290,9 +290,6 @@ function CompanyInfoPage({ uiLanguage = 'fr' }) {
             </p>
             <p className="mt-1 text-xs text-slate-400">
               {t.legalForm}: {legalForm || '-'} | {t.startDate}: {startDate || '-'}
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Forme juridique: {legalForm || '-'} | Date de debut: {startDate || '-'}
             </p>
 
             <div className="mt-4 flex items-center justify-between gap-3">

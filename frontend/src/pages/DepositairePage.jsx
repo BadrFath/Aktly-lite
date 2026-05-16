@@ -8,7 +8,35 @@ const veriffSessionEndpoint = (import.meta.env.VITE_VERIFF_SESSION_ENDPOINT ?? '
 const veriffNotifyEndpoint = (import.meta.env.VITE_VERIFF_NOTIFY_ENDPOINT ?? '/api/veriff/notify').trim()
 const bearerToken = (import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? '').trim()
 
-const normalizeDirigeant = (row, index) => {
+const normalizeRoleLabel = (value, uiLanguage) => {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return uiLanguage === 'nl' ? 'Bestuurder' : 'Administrateur'
+  }
+
+  const cleaned = raw
+    .replace(/^fonctions?\s*/i, '')
+    .replace(/^functies?\s*/i, '')
+    .trim()
+
+  const lower = cleaned.toLowerCase()
+  if (uiLanguage === 'fr') {
+    if (lower.includes('bestuurder')) return 'Administrateur'
+    if (lower.includes('zaakvoerder')) return 'Gerant'
+    if (lower.includes('gedelegeerd') || lower.includes('afgevaardigd')) return 'Delegue'
+    return cleaned
+  }
+
+  if (lower.includes('administrateur') || lower.includes('gerant') || lower.includes('gérant')) {
+    return 'Bestuurder'
+  }
+  if (lower.includes('delegue') || lower.includes('délégué')) {
+    return 'Gedelegeerd'
+  }
+  return cleaned
+}
+
+const normalizeDirigeant = (row, index, uiLanguage) => {
   const fullName = (row?.name ?? '').trim()
   let givenName = row?.givenName ?? row?.given_name ?? row?.prenom ?? ''
   let surname = row?.surname ?? row?.lastName ?? row?.nom ?? ''
@@ -19,7 +47,7 @@ const normalizeDirigeant = (row, index) => {
     surname = parts.join(' ')
   }
 
-  const functionLabel = row?.function ?? row?.fonction ?? row?.role ?? 'Administrateur'
+  const functionLabel = normalizeRoleLabel(row?.function ?? row?.fonction ?? row?.role, uiLanguage)
   const demandeId =
     row?.demandeId ?? row?.demande_id ?? row?.idDemande ?? row?.request_id ?? 'N/A'
   const id = String(row?.id ?? `${demandeId}-${index}`)
@@ -169,7 +197,7 @@ function DepositairePage({ uiLanguage = 'fr' }) {
 
         const payload = await response.json()
         const normalized = extractRows(payload)
-          .map(normalizeDirigeant)
+          .map((row, index) => normalizeDirigeant(row, index, uiLanguage))
           .filter((row) => row.givenName || row.surname)
 
         if (!cancelled && normalized.length > 0) {
@@ -198,7 +226,7 @@ function DepositairePage({ uiLanguage = 'fr' }) {
     return () => {
       cancelled = true
     }
-  }, [dirigeantsEndpoint, enterpriseNumber, t.apiConnectedNoDirigeant, t.apiUnavailable, t.configMissing, t.dirigeantsConfigMissing, t.sessionUser])
+  }, [dirigeantsEndpoint, enterpriseNumber, t.apiConnectedNoDirigeant, t.apiUnavailable, t.configMissing, t.dirigeantsConfigMissing, t.sessionUser, uiLanguage])
 
   useEffect(() => {
     if (!dirigeants.some((item) => item.id === selectedDirigeantId)) {
