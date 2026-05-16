@@ -1189,40 +1189,41 @@ async function fetchBnbCompany(enterpriseNumber, langue) {
 }
 
 async function makeDirigeantsPayload(req, enterpriseNumber) {
-  const cleanNumber = String(enterpriseNumber || "").replace(/\D+/g, "");
+  const cleanNumber = String(
+      enterpriseNumber || ""
+  ).replace(/\D+/g, "");
 
-  const cacheFr = readBceCache(cleanNumber, "fr");
-  const cacheNl = readBceCache(cleanNumber, "nl");
-  const cachedDirigeants =
-    cacheFr?.dirigeants?.length
-      ? cacheFr.dirigeants
-      : cacheNl?.dirigeants;
+  try {
 
-  if (Array.isArray(cachedDirigeants) && cachedDirigeants.length > 0) {
-    return { data: cachedDirigeants };
-  }
-
-  if (cleanNumber) {
-    try {
-      const fromBce = await fetchBceSoapCompany(cleanNumber, "fr");
+      const fromBce =
+        await fetchBceSoapCompany(
+            cleanNumber,
+            "fr"
+        );
 
       if (
-        Array.isArray(fromBce?.dirigeants) &&
-        fromBce.dirigeants.length > 0
+        Array.isArray(
+            fromBce?.dirigeants
+        ) &&
+        fromBce.dirigeants.length
       ) {
-        return { data: fromBce.dirigeants };
+
+          return {
+            data:
+             fromBce.dirigeants
+          };
       }
-    } catch (error) {
+
+  } catch(error){
+
       console.error(
-        "Erreur BCE dirigeants:",
-        error?.message || error
+        "BCE:",
+        error.message
       );
-    }
   }
 
   return {
-    data: [],
-    source: "bce-no-results",
+      data:[]
   };
 }
 
