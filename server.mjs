@@ -1063,22 +1063,27 @@ function parseBcePublicDirigeantsFromHtml(html, enterpriseNumber) {
   if (!source) {
     return [];
   }
-
-  const sectionMatch = source.match(/<h2>\s*(?:Fonctions|Functies)\s*<\/h2>([\s\S]*?)(?:<h2>|<\/table>|<\/body>)/i);
-  if (!sectionMatch?.[1]) {
-    return [];
-  }
-
-  const section = sectionMatch[1];
   const rows = [];
+  const rolePattern = /(administrateur|bestuurder|g[ée]rant|zaakvoerder|mandataire|gedelegeerd|directeur)/i;
   const rowRegex = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<\/tr>/gi;
   let match;
 
-  while ((match = rowRegex.exec(section)) !== null) {
+  while ((match = rowRegex.exec(source)) !== null) {
     const roleRaw = htmlCellToText(match[1]);
     const nameRaw = htmlCellToText(match[2]);
-    const role = cleanBceLines(roleRaw)[0] || "Administrateur";
+    const role = cleanBceLines(roleRaw)[0] || "";
+    if (!rolePattern.test(role)) {
+      continue;
+    }
+
     const normalizedName = cleanBceLines(nameRaw).join(" ").trim();
+    if (
+      !normalizedName ||
+      /geen gegevens|pas de donn|depuis|sedert|sinds/i.test(normalizeLabel(normalizedName))
+    ) {
+      continue;
+    }
+
     const { givenName, surname } = parseDirigeantName(normalizedName);
 
     if (!givenName && !surname) {
@@ -1090,7 +1095,7 @@ function parseBcePublicDirigeantsFromHtml(html, enterpriseNumber) {
       demande_id: String(enterpriseNumber || ""),
       given_name: givenName,
       nom: surname,
-      role,
+      role: role || "Administrateur",
     });
   }
 
