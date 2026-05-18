@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
@@ -36,9 +36,48 @@ const dossierGenerateBaseEndpoint =
 
 const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
 
+const readJsonFromStorage = (key, fallback = null) => {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+const readDossierSnapshot = () => ({
+  isPaymentVerified: localStorage.getItem('aktly_payment_verified') === 'true',
+  payment: readJsonFromStorage('aktly_payment'),
+  user: readJsonFromStorage('aktly_user'),
+  addressInfo: readJsonFromStorage('aktly_address_info'),
+  depositaire: readJsonFromStorage('aktly_depositaire'),
+  companyData: readJsonFromStorage('aktly_company_data'),
+  documentsLang: localStorage.getItem('aktly_documents_lang') || 'fr',
+})
+
+const resolveCompanyDisplayName = (companyData) => {
+  if (companyData?.company_name) {
+    return companyData.company_name
+  }
+
+  const descriptions = companyData?.denomination?.[0]?.description
+  if (Array.isArray(descriptions)) {
+    const preferred = descriptions.find((item) => item?.language === companyData?.lang_entre)?.value
+    if (preferred) {
+      return preferred
+    }
+    const fallback = descriptions.find((item) => item?.value)?.value
+    if (fallback) {
+      return fallback
+    }
+  }
+
+  return '-'
+}
+
 function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
   const navigate = useNavigate()
-  const isPaymentVerified = localStorage.getItem('aktly_payment_verified') === 'true'
+  const [draft, setDraft] = useState(() => readDossierSnapshot())
   const dossierFiles = useMemo(() => getDossierFiles(uiLanguage), [uiLanguage])
   const t = uiLanguage === 'nl'
     ? {
@@ -65,6 +104,7 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         completeDossier: 'Volledig dossier (weergave en afdruk)',
         generationFallback: 'Servergeneratie niet beschikbaar. Statisch bestand werd gedownload.',
         view: 'Bekijken',
+        opening: 'Openen...',
         download: 'Downloaden',
         generating: 'Genereren...',
         dates: 'Wijzigingsdatum',
@@ -98,6 +138,7 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         completeDossier: 'Dossier complet (visuel et impression)',
         generationFallback: 'Generation serveur indisponible. Fichier statique telecharge a la place.',
         view: 'Voir',
+        opening: 'Ouverture...',
         download: 'Telecharger',
         generating: 'Generation...',
         dates: 'Date changement',
@@ -108,37 +149,37 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         filesSource: 'Source fichiers utilises',
       }
 
-  const payment = useMemo(() => {
-    const raw = localStorage.getItem('aktly_payment')
-    return raw ? JSON.parse(raw) : null
-  }, [])
-
-  const user = useMemo(() => {
-    const raw = localStorage.getItem('aktly_user')
-    return raw ? JSON.parse(raw) : null
-  }, [])
-
-  const addressInfo = useMemo(() => {
-    const raw = localStorage.getItem('aktly_address_info')
-    return raw ? JSON.parse(raw) : null
-  }, [])
-
-  const depositaire = useMemo(() => {
-    const raw = localStorage.getItem('aktly_depositaire')
-    return raw ? JSON.parse(raw) : null
-  }, [])
+  const { isPaymentVerified, payment, user, addressInfo, depositaire, companyData, documentsLang } = draft
 
   const [downloadError, setDownloadError] = useState('')
   const [downloadingKey, setDownloadingKey] = useState('')
+  const [viewingKey, setViewingKey] = useState('')
 
-  const companyData = useMemo(() => {
-    const raw = localStorage.getItem('aktly_company_data')
-    return raw ? JSON.parse(raw) : null
+  useEffect(() => {
+    const refreshSnapshot = () => {
+      setDraft(readDossierSnapshot())
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSnapshot()
+      }
+    }
+
+    refreshSnapshot()
+    window.addEventListener('focus', refreshSnapshot)
+    window.addEventListener('pageshow', refreshSnapshot)
+    window.addEventListener('storage', refreshSnapshot)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', refreshSnapshot)
+      window.removeEventListener('pageshow', refreshSnapshot)
+      window.removeEventListener('storage', refreshSnapshot)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [])
 
-  const documentsLang = useMemo(() => {
-    return localStorage.getItem('aktly_documents_lang') || 'fr'
-  }, [])
   const onPrintDossier = () => {
     window.print()
   }
@@ -152,38 +193,76 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     document.body.removeChild(link)
   }
 
+  const requestGeneratedDocumentBlob = async (file) => {
+    const latestDraft = readDossierSnapshot()
+    setDraft(latestDraft)
+
+    const endpoint = `${dossierGenerateBaseEndpoint}/${file.documentKey}`
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        company_data: latestDraft.companyData ?? {},
+        address_info: latestDraft.addressInfo ?? {},
+        depositaire: latestDraft.depositaire ?? {},
+        user: latestDraft.user ?? {},
+        payment: latestDraft.payment ?? {},
+        file_language: latestDraft.documentsLang,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get('content-disposition') || ''
+    const matchedFileName = disposition.match(/filename="?([^";]+)"?/i)
+    const fileName = matchedFileName?.[1] || `${file.documentKey}.txt`
+
+    return { blob, fileName }
+  }
+
+  const onViewGeneratedDocument = async (file) => {
+    setDownloadError('')
+    setViewingKey(file.documentKey)
+
+    // Open immediately to reduce popup blocker risk, then navigate when content is ready.
+    const previewWindow = window.open('', '_blank')
+
+    try {
+      const { blob } = await requestGeneratedDocumentBlob(file)
+      const blobUrl = URL.createObjectURL(blob)
+
+      if (previewWindow) {
+        previewWindow.location.href = blobUrl
+      } else {
+        window.open(blobUrl, '_blank')
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    } catch {
+      if (previewWindow) {
+        previewWindow.close()
+      }
+      setDownloadError(t.generationFallback)
+      window.open(file.viewUrl, '_blank', 'noopener,noreferrer')
+    } finally {
+      setViewingKey('')
+    }
+  }
+
   const onDownloadGeneratedDocument = async (file) => {
     setDownloadError('')
     setDownloadingKey(file.documentKey)
 
     try {
-      const endpoint = `${dossierGenerateBaseEndpoint}/${file.documentKey}`
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          company_data: companyData ?? {},
-          address_info: addressInfo ?? {},
-          depositaire: depositaire ?? {},
-          user: user ?? {},
-          payment: payment ?? {},
-          file_language: documentsLang,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      const blob = await response.blob()
+      const { blob, fileName } = await requestGeneratedDocumentBlob(file)
       const blobUrl = URL.createObjectURL(blob)
-      const disposition = response.headers.get('content-disposition') || ''
-      const matchedFileName = disposition.match(/filename="?([^";]+)"?/i)
-      const fileName = matchedFileName?.[1] || `${file.documentKey}.txt`
 
       const link = document.createElement('a')
       link.href = blobUrl
@@ -271,7 +350,7 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         <section className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
           <h3 className="text-lg font-semibold text-slate-100">{t.prefilled}</h3>
           <div className="mt-2 space-y-1 text-sm text-slate-300">
-            <p>{t.enterprise}: {companyData?.company_name ?? '-'}</p>
+            <p>{t.enterprise}: {resolveCompanyDisplayName(companyData)}</p>
             <p>{t.bce}: {companyData?.number ?? '-'}</p>
             <p>{t.bceAddress}: {companyData?.address ?? '-'}</p>
             <p>{t.legalForm}: {companyData?.enterprise?.legalForm ?? '-'}</p>
@@ -295,19 +374,19 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
               >
                 <p className="mb-4 text-xl font-medium text-slate-800">{file.title}</p>
                 <div className="flex flex-wrap gap-2">
-                  <a
-                    href={file.viewUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => onViewGeneratedDocument(file)}
+                    disabled={viewingKey === file.documentKey || downloadingKey === file.documentKey}
                     className="wow-btn inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700"
                   >
                     <span aria-hidden="true">◉</span>
-                    {t.view}
-                  </a>
+                    {viewingKey === file.documentKey ? t.opening : t.view}
+                  </button>
                   <button
                     type="button"
                     onClick={() => onDownloadGeneratedDocument(file)}
-                    disabled={downloadingKey === file.documentKey}
+                    disabled={downloadingKey === file.documentKey || viewingKey === file.documentKey}
                     className="wow-btn inline-flex items-center gap-2 rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-400"
                   >
                     <span aria-hidden="true">⬇</span>
