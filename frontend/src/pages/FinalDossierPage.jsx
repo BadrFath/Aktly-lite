@@ -55,6 +55,13 @@ const readDossierSnapshot = () => ({
   documentsLang: localStorage.getItem('aktly_documents_lang') || 'fr',
 })
 
+const escapeHtml = (value) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
 const resolveCompanyDisplayName = (companyData) => {
   if (companyData?.company_name) {
     return companyData.company_name
@@ -235,16 +242,27 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     const previewWindow = window.open('', '_blank')
 
     try {
-      const { blob } = await requestGeneratedDocumentBlob(file)
-      const blobUrl = URL.createObjectURL(blob)
+      const { blob, fileName } = await requestGeneratedDocumentBlob(file)
+      const mime = String(blob?.type || '').toLowerCase()
 
       if (previewWindow) {
-        previewWindow.location.href = blobUrl
+        if (mime.includes('text/plain') || !mime) {
+          const textContent = await blob.text()
+          const safeTitle = escapeHtml(fileName)
+          const safeBody = escapeHtml(textContent)
+          previewWindow.document.open()
+          previewWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>body{margin:0;padding:20px;background:#0b1220;color:#e5e7eb;font-family:Consolas,Monaco,'Courier New',monospace}pre{white-space:pre-wrap;line-height:1.5;font-size:16px}</style></head><body><pre>${safeBody}</pre></body></html>`)
+          previewWindow.document.close()
+        } else {
+          const blobUrl = URL.createObjectURL(blob)
+          previewWindow.location.href = blobUrl
+          window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+        }
       } else {
+        const blobUrl = URL.createObjectURL(blob)
         window.open(blobUrl, '_blank')
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
       }
-
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
     } catch {
       if (previewWindow) {
         previewWindow.close()
