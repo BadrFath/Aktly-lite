@@ -1479,6 +1479,100 @@ function pickDepositaireName(depositaire) {
   );
 }
 
+const dossierPdfTemplates = {
+  "formulaire1entr": "formulaire1entr.pdf",
+  "formulaire2entr": "formulaire2entr.pdf",
+  "attestation-identite": "attestation-identite-modele-1-fr.pdf",
+};
+
+async function resolveTemplateFilePath(fileName) {
+  const candidates = [
+    path.join(distDir, "legakte-docs", fileName),
+    path.resolve("frontend", "public", "legakte-docs", fileName),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // Keep trying next candidate.
+    }
+  }
+
+  return "";
+}
+
+function buildDossierOverlayLines(payload) {
+  return [
+    `Entreprise: ${payload.companyName}`,
+    `Numero BCE: ${payload.enterpriseNumber}`,
+    `Adresse BCE: ${payload.companyAddress}`,
+    `Nouvelle adresse: ${payload.newAddress}`,
+    `Date changement: ${payload.changeDate}`,
+    `Date AG: ${payload.agDate}`,
+    `Depositaire: ${payload.depositaireName} (${payload.depositaireFunction})`,
+    `Utilisateur: ${payload.userName} - ${payload.userEmail}`,
+  ];
+}
+
+async function createTemplateOverlayPdf(templateFileName, overlayTitle, overlayLines) {
+  const templatePath = await resolveTemplateFilePath(templateFileName);
+  if (!templatePath) {
+    throw new Error(`Template introuvable: ${templateFileName}`);
+  }
+
+  const templateBytes = await fs.readFile(templatePath);
+  const pdfDoc = await PDFDocument.load(templateBytes);
+  const page = pdfDoc.getPage(0);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const pageWidth = page.getWidth();
+  const pageHeight = page.getHeight();
+  const boxX = 40;
+  const boxY = Math.max(40, pageHeight - 245);
+  const boxWidth = pageWidth - 80;
+  const boxHeight = 195;
+
+  page.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxWidth,
+    height: boxHeight,
+    color: rgb(1, 1, 1),
+    opacity: 0.92,
+    borderColor: rgb(0.18, 0.27, 0.42),
+    borderWidth: 0.8,
+  });
+
+  let textY = boxY + boxHeight - 20;
+  page.drawText(overlayTitle, {
+    x: boxX + 12,
+    y: textY,
+    size: 11,
+    font: boldFont,
+    color: rgb(0.08, 0.14, 0.24),
+  });
+
+  textY -= 16;
+  for (const line of overlayLines) {
+    page.drawText(String(line || ""), {
+      x: boxX + 12,
+      y: textY,
+      size: 9,
+      font,
+      color: rgb(0.08, 0.14, 0.24),
+      maxWidth: boxWidth - 24,
+      lineHeight: 11,
+    });
+    textY -= 16;
+  }
+
+  const bytes = await pdfDoc.save();
+  return Buffer.from(bytes);
+}
+
 function wrapPdfLines(text, font, fontSize, maxWidth) {
   const lines = [];
   const paragraphs = String(text || "").split(/\n/);
@@ -1627,6 +1721,33 @@ async function buildDossierDocument(documentKey, body) {
     "attestation-identite": `${header}ATTESTATION D'IDENTITE - MODELE 1\n\n${common}`,
     "pv-assemblee-generale": `${header}PROCES-VERBAL DE L'ASSEMBLEE GENERALE\n\n${common}Resolution\nL'assemblee generale de ${companyName} decide de transferer le siege social a ${newAddress}.\nLa decision prend effet a la date du ${changeDate}.\n`,
   };
+
+  if (dossierPdfTemplates[documentKey]) {
+    const overlayLines = buildDossierOverlayLines({
+      companyName,
+      enterpriseNumber,
+      companyAddress,
+      newAddress,
+      changeDate,
+      agDate,
+      depositaireName,
+      depositaireFunction,
+      userName,
+      userEmail,
+    });
+
+    const pdfBuffer = await createTemplateOverlayPdf(
+      dossierPdfTemplates[documentKey],
+      `Aktly Lite - Pre-remplissage (${formatNowForHeader()})`,
+      overlayLines,
+    );
+
+    return {
+      fileName: `${documentKey}-${fileTimestamp}.pdf`,
+      mimeType: "application/pdf",
+      content: pdfBuffer,
+    };
+  }
 
   if (documents[documentKey]) {
     const pdfTitleByKey = {
