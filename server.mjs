@@ -1425,49 +1425,57 @@ function safeValue(value, fallback = "-") {
   return text || fallback;
 }
 
-function pickDescription(descriptions, preferredLang = "fr") {
+function readDescriptionValue(descriptions, preferredLang = "fr") {
   if (!Array.isArray(descriptions)) {
     return "";
   }
 
   const normalizedLang = String(preferredLang || "fr").toLowerCase();
-  const match = descriptions.find((item) => String(item?.language || "").toLowerCase() === normalizedLang);
-  if (match?.value) {
-    return String(match.value);
+  const preferred = descriptions.find((item) => String(item?.language || "").toLowerCase() === normalizedLang);
+  if (preferred?.value) {
+    return String(preferred.value).trim();
   }
 
-  const first = descriptions.find((item) => item?.value);
-  return first?.value ? String(first.value) : "";
+  const fallback = descriptions.find((item) => item?.value);
+  return fallback?.value ? String(fallback.value).trim() : "";
 }
 
-function resolveCompanyName(companyData) {
+function formatNowForHeader() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
+function formatNowForFileName() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
+}
+
+function pickDepositaireName(depositaire) {
   return (
-    safeValue(companyData?.company_name, "") ||
-    safeValue(pickDescription(companyData?.denomination?.[0]?.description, companyData?.lang_entre || "fr"), "") ||
-    `Entreprise ${safeValue(companyData?.number, "")}`
+    [
+      depositaire?.dirigeant?.givenName,
+      depositaire?.dirigeant?.given_name,
+      depositaire?.given_name,
+      depositaire?.dirigeant?.surname,
+      depositaire?.dirigeant?.nom,
+      depositaire?.nom,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join(" ") || "Non renseigne"
   );
-}
-
-function resolveAddress(companyData, addressInfo) {
-  const fromCompany = companyData?.addresses?.[0] || {};
-  const normalized = {
-    street: safeValue(addressInfo?.rue || fromCompany?.street, ""),
-    houseNumber: safeValue(addressInfo?.numero || fromCompany?.houseNumber, ""),
-    box: safeValue(addressInfo?.boite || fromCompany?.box, ""),
-    postalCode: safeValue(addressInfo?.codePostal || fromCompany?.postalCode, ""),
-    municipality: safeValue(addressInfo?.commune || fromCompany?.municipality, ""),
-    country: safeValue(fromCompany?.country || "Belgique", "Belgique"),
-  };
-
-  const line1 = [normalized.street, normalized.houseNumber].filter(Boolean).join(" ");
-  const line1WithBox = normalized.box ? `${line1} boite ${normalized.box}` : line1;
-  const line2 = [normalized.postalCode, normalized.municipality].filter(Boolean).join(" ");
-  const full = [line1WithBox, line2, normalized.country].filter(Boolean).join(", ");
-
-  return {
-    ...normalized,
-    full,
-  };
 }
 
 function buildDossierDocument(documentKey, body) {
@@ -1476,117 +1484,73 @@ function buildDossierDocument(documentKey, body) {
   const depositaire = body?.depositaire || {};
   const user = body?.user || {};
   const payment = body?.payment || {};
-  const language = String(body?.file_language || companyData?.lang_entre || "fr").toLowerCase() === "nl" ? "nl" : "fr";
-  const isNl = language === "nl";
 
-  const companyName = resolveCompanyName(companyData);
-  const enterpriseNumber = safeValue(companyData?.number);
-  const companyAddress = resolveAddress(companyData, addressInfo);
-  const legalForm = safeValue(companyData?.enterprise?.legalForm);
-  const startDate = safeValue(companyData?.enterprise?.startDate);
-  const status = safeValue(companyData?.juridicalSituation?.status?.description?.[0]?.value);
-  const depositaireName = [safeValue(depositaire?.given_name, ""), safeValue(depositaire?.nom, "")]
-    .filter(Boolean)
-    .join(" ");
+  const lang = companyData?.lang_entre || "fr";
+  const companyName =
+    safeValue(companyData?.company_name, "") ||
+    safeValue(readDescriptionValue(companyData?.denomination?.[0]?.description, lang), "") ||
+    "Non renseigne";
+  const enterpriseNumber = safeValue(companyData?.number, "Non renseigne");
+  const legalForm = safeValue(companyData?.enterprise?.legalForm, "Non renseigne");
+  const companyAddress =
+    safeValue(companyData?.address, "") ||
+    safeValue(companyData?.addresses?.[0]?.full, "") ||
+    "Non renseignee";
+  const status = safeValue(companyData?.juridicalSituation?.status?.description?.[0]?.value, "Non renseigne");
+  const changeDate = safeValue(addressInfo?.dateChangement, "Non renseignee");
+  const agDate = safeValue(addressInfo?.dateAssembleeGenerale, "Non renseignee");
+  const newStreet = `${String(addressInfo?.rue || "").trim()} ${String(addressInfo?.numero || "").trim()}`.trim();
+  const newBox = String(addressInfo?.boite || "").trim();
+  const newPostal = String(addressInfo?.codePostal || "").trim();
+  const newCity = String(addressInfo?.commune || "").trim();
+  const newAddressLine = `${newStreet}${newBox ? ` boite ${newBox}` : ""}`.trim();
+  const newAddress = `${newAddressLine} - ${newPostal} ${newCity}`.trim() || "Non renseignee";
+  const depositaireName = pickDepositaireName(depositaire);
+  const depositaireFunction = safeValue(
+    depositaire?.dirigeant?.function || depositaire?.dirigeant?.role || depositaire?.role,
+    "Non renseignee",
+  );
+  const depositaireType = safeValue(depositaire?.depositaire_type, "Non renseigne");
+  const userName = safeValue(user?.name, "Non renseigne");
+  const userEmail = safeValue(user?.email, "Non renseigne");
+  const pack = safeValue(payment?.pack?.slug, "Non renseigne");
+  const credits = safeValue(payment?.pack?.credits, "0");
+  const fileTimestamp = formatNowForFileName();
 
-  const commonHeader = [
-    `${isNl ? "Onderneming" : "Entreprise"}: ${companyName}`,
-    `${isNl ? "Ondernemingsnummer" : "Numero BCE"}: ${enterpriseNumber}`,
-    `${isNl ? "Rechtsvorm" : "Forme juridique"}: ${legalForm}`,
-    `${isNl ? "Status" : "Statut"}: ${status}`,
-    `${isNl ? "Adres" : "Adresse"}: ${safeValue(companyAddress.full)}`,
-  ];
+  const header = [
+    "Aktly Lite - Document pre-rempli",
+    `Generation: ${formatNowForHeader()}`,
+    "",
+  ].join("\n");
 
-  if (documentKey === "formulaire1entr") {
-    const content = [
-      isNl ? "FORMULIER 1 - IDENTIFICATIE ONDERNEMING" : "FORMULAIRE 1 - IDENTIFICATION ENTREPRISE",
-      "",
-      ...commonHeader,
-      "",
-      isNl ? "Adresgegevens:" : "Adresse detaillee:",
-      `- ${isNl ? "Straat" : "Rue"}: ${safeValue(companyAddress.street)}`,
-      `- ${isNl ? "Nummer" : "Numero"}: ${safeValue(companyAddress.houseNumber)}`,
-      `- ${isNl ? "Bus" : "Boite"}: ${safeValue(companyAddress.box)}`,
-      `- ${isNl ? "Postcode" : "Code postal"}: ${safeValue(companyAddress.postalCode)}`,
-      `- ${isNl ? "Gemeente" : "Commune"}: ${safeValue(companyAddress.municipality)}`,
-      `- ${isNl ? "Land" : "Pays"}: ${safeValue(companyAddress.country)}`,
-      "",
-      `${isNl ? "Startdatum onderneming" : "Date debut entreprise"}: ${startDate}`,
-      `${isNl ? "Wijzigingsdatum" : "Date changement"}: ${safeValue(addressInfo?.dateChangement)}`,
-    ].join("\n");
+  const common = [
+    `Entreprise: ${companyName}`,
+    `Numero BCE: ${enterpriseNumber}`,
+    `Forme juridique: ${legalForm}`,
+    `Statut: ${status}`,
+    `Adresse BCE actuelle: ${companyAddress}`,
+    `Nouvelle adresse: ${newAddress}`,
+    `Date changement: ${changeDate}`,
+    `Date AG: ${agDate}`,
+    `Depositaire: ${depositaireName} (${depositaireFunction})`,
+    `Type depositaire: ${depositaireType}`,
+    `Utilisateur: ${userName} - ${userEmail}`,
+    `Pack: ${pack} - Credits: ${credits}`,
+    "",
+  ].join("\n");
 
+  const documents = {
+    "formulaire1entr": `${header}FORMULAIRE 1 - MODIFICATION ENTREPRISE\n\n${common}`,
+    "formulaire2entr": `${header}FORMULAIRE 2 - DONNEES COMPLEMENTAIRES\n\n${common}`,
+    "attestation-identite": `${header}ATTESTATION D'IDENTITE - MODELE 1\n\n${common}`,
+    "pv-assemblee-generale": `${header}PROCES-VERBAL DE L'ASSEMBLEE GENERALE\n\n${common}Resolution\nL'assemblee generale de ${companyName} decide de transferer le siege social a ${newAddress}.\nLa decision prend effet a la date du ${changeDate}.\n`,
+  };
+
+  if (documents[documentKey]) {
     return {
-      fileName: isNl ? "formulier1ingevuld.txt" : "formulaire1entr-rempli.txt",
+      fileName: `${documentKey}-${fileTimestamp}.txt`,
       mimeType: "text/plain; charset=utf-8",
-      content,
-    };
-  }
-
-  if (documentKey === "formulaire2entr") {
-    const content = [
-      isNl ? "FORMULIER 2 - ONDERNEMING UPDATE" : "FORMULAIRE 2 - MISE A JOUR ENTREPRISE",
-      "",
-      ...commonHeader,
-      "",
-      isNl ? "Aanvullende informatie:" : "Informations complementaires:",
-      `- ${isNl ? "Wijzigingsdatum" : "Date de changement"}: ${safeValue(addressInfo?.dateChangement)}`,
-      `- ${isNl ? "Datum algemene vergadering" : "Date assemblee generale"}: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
-      `- ${isNl ? "Bewaarnemer" : "Depositaire"}: ${safeValue(depositaireName)}`,
-      `- ${isNl ? "Rol bewaarnemer" : "Role depositaire"}: ${safeValue(depositaire?.role || "Administrateur")}`,
-      `- ${isNl ? "E-mail gebruiker" : "Email utilisateur"}: ${safeValue(user?.email)}`,
-      `- Pack: ${safeValue(payment?.pack?.slug)}`,
-    ].join("\n");
-
-    return {
-      fileName: isNl ? "formulier2ingevuld.txt" : "formulaire2entr-rempli.txt",
-      mimeType: "text/plain; charset=utf-8",
-      content,
-    };
-  }
-
-  if (documentKey === "attestation-identite") {
-    const content = [
-      isNl ? "IDENTITEITSATTEST - MODEL 1" : "ATTESTATION D'IDENTITE - MODELE 1",
-      "",
-      ...commonHeader,
-      "",
-      `${isNl ? "Vertegenwoordiger" : "Representant"}: ${safeValue(depositaireName)}`,
-      `${isNl ? "Functie" : "Fonction"}: ${safeValue(depositaire?.role || "Administrateur")}`,
-      `${isNl ? "Oprichtings/startdatum" : "Date de constitution/debut"}: ${startDate}`,
-      `${isNl ? "Boekjaar" : "Exercice social"}: ${safeValue(companyData?.enterprise?.fiscalYear || "Non renseigne")}`,
-      `${isNl ? "Algemene vergadering" : "Assemblee generale"}: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
-    ].join("\n");
-
-    return {
-      fileName: isNl ? "identiteitsattest-ingevuld.txt" : "attestation-identite-remplie.txt",
-      mimeType: "text/plain; charset=utf-8",
-      content,
-    };
-  }
-
-  if (documentKey === "pv-assemblee-generale") {
-    const content = [
-      isNl ? "PROCES-VERBAAL VAN DE ALGEMENE VERGADERING" : "PROCES-VERBAL DE L'ASSEMBLEE GENERALE",
-      "",
-      `${isNl ? "Vennootschap" : "Societe"}: ${companyName}`,
-      `${isNl ? "Ondernemingsnummer" : "Numero BCE"}: ${enterpriseNumber}`,
-      `${isNl ? "Maatschappelijke zetel" : "Siege social"}: ${safeValue(companyAddress.full)}`,
-      `${isNl ? "Datum vergadering" : "Date de l'assemblee"}: ${safeValue(addressInfo?.dateAssembleeGenerale)}`,
-      `${isNl ? "Wijzigingsdatum" : "Date de changement"}: ${safeValue(addressInfo?.dateChangement)}`,
-      "",
-      isNl ? "Deelnemers/bestuurders:" : "Participants/dirigeants:",
-      `- ${safeValue(depositaireName || user?.name || "Representant")}`,
-      "",
-      `${isNl ? "Beslissing" : "Decision"}:`,
-      isNl
-        ? "De vergadering keurt de zetelwijziging en de bijhorende formaliteiten goed."
-        : "L'assemblee approuve la mise a jour du siege social et les formalites associees.",
-    ].join("\n");
-
-    return {
-      fileName: isNl ? "pv-algemene-vergadering-ingevuld.txt" : "pv-assemblee-generale-rempli.txt",
-      mimeType: "text/plain; charset=utf-8",
-      content,
+      content: documents[documentKey],
     };
   }
 
