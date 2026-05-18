@@ -229,7 +229,7 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     const blob = await response.blob()
     const disposition = response.headers.get('content-disposition') || ''
     const matchedFileName = disposition.match(/filename="?([^";]+)"?/i)
-    const fileName = matchedFileName?.[1] || `${file.documentKey}.txt`
+    const fileName = matchedFileName?.[1] || `${file.documentKey}.pdf`
 
     return { blob, fileName }
   }

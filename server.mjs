@@ -2,6 +2,7 @@ import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const port = Number(process.env.PORT || 10000);
 const host = "0.0.0.0";
@@ -1478,7 +1479,88 @@ function pickDepositaireName(depositaire) {
   );
 }
 
-function buildDossierDocument(documentKey, body) {
+function wrapPdfLines(text, font, fontSize, maxWidth) {
+  const lines = [];
+  const paragraphs = String(text || "").split(/\n/);
+
+  for (const paragraph of paragraphs) {
+    const trimmed = paragraph.trim();
+    if (!trimmed) {
+      lines.push("");
+      continue;
+    }
+
+    const words = trimmed.split(/\s+/);
+    let currentLine = "";
+
+    for (const word of words) {
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      const width = font.widthOfTextAtSize(candidate, fontSize);
+
+      if (width <= maxWidth || !currentLine) {
+        currentLine = candidate;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+async function createPdfDocumentFromText(title, bodyText) {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 48;
+  const titleSize = 14;
+  const bodySize = 11;
+  const lineHeight = 16;
+  const maxWidth = pageWidth - margin * 2;
+
+  let page = pdfDoc.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - margin;
+
+  page.drawText(String(title || "Document Aktly Lite"), {
+    x: margin,
+    y,
+    size: titleSize,
+    font: boldFont,
+    color: rgb(0.08, 0.14, 0.24),
+  });
+  y -= 26;
+
+  const lines = wrapPdfLines(bodyText, font, bodySize, maxWidth);
+  for (const line of lines) {
+    if (y < margin) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      y = pageHeight - margin;
+    }
+
+    if (line) {
+      page.drawText(line, {
+        x: margin,
+        y,
+        size: bodySize,
+        font,
+        color: rgb(0.07, 0.09, 0.12),
+      });
+    }
+
+    y -= lineHeight;
+  }
+
+  const bytes = await pdfDoc.save();
+  return Buffer.from(bytes);
+}
+
+async function buildDossierDocument(documentKey, body) {
   const companyData = body?.company_data || {};
   const addressInfo = body?.address_info || {};
   const depositaire = body?.depositaire || {};
@@ -1547,10 +1629,19 @@ function buildDossierDocument(documentKey, body) {
   };
 
   if (documents[documentKey]) {
+    const pdfTitleByKey = {
+      "formulaire1entr": "Formulaire 1 - Modification entreprise",
+      "formulaire2entr": "Formulaire 2 - Donnees complementaires",
+      "attestation-identite": "Attestation d'identite - Modele 1",
+      "pv-assemblee-generale": "Proces-verbal de l'assemblee generale",
+    };
+
+    const pdfBuffer = await createPdfDocumentFromText(pdfTitleByKey[documentKey], documents[documentKey]);
+
     return {
-      fileName: `${documentKey}-${fileTimestamp}.txt`,
-      mimeType: "text/plain; charset=utf-8",
-      content: documents[documentKey],
+      fileName: `${documentKey}-${fileTimestamp}.pdf`,
+      mimeType: "application/pdf",
+      content: pdfBuffer,
     };
   }
 
@@ -1867,7 +1958,7 @@ const server = http.createServer(async (req, res) => {
     if (method === "POST" && requestPath.startsWith("/lite/dossier/generate/")) {
       const documentKey = decodeURIComponent(requestPath.replace("/lite/dossier/generate/", "")).trim();
       const payload = await readJsonBody(req);
-      const doc = buildDossierDocument(documentKey, payload);
+      const doc = await buildDossierDocument(documentKey, payload);
 
       if (!doc) {
         sendJson(res, 404, { message: "Type de document non supporte." });
