@@ -1503,20 +1503,73 @@ async function resolveTemplateFilePath(fileName) {
   return "";
 }
 
-function buildDossierOverlayLines(payload) {
-  return [
-    `Entreprise: ${payload.companyName}`,
-    `Numero BCE: ${payload.enterpriseNumber}`,
-    `Adresse BCE: ${payload.companyAddress}`,
-    `Nouvelle adresse: ${payload.newAddress}`,
-    `Date changement: ${payload.changeDate}`,
-    `Date AG: ${payload.agDate}`,
-    `Depositaire: ${payload.depositaireName} (${payload.depositaireFunction})`,
-    `Utilisateur: ${payload.userName} - ${payload.userEmail}`,
-  ];
+function drawWrappedOnPage(page, font, text, x, y, fontSize, maxWidth, maxLines = 2) {
+  const safeText = String(text || "").trim();
+  if (!safeText) {
+    return;
+  }
+
+  const lines = wrapPdfLines(safeText, font, fontSize, maxWidth).slice(0, Math.max(1, maxLines));
+  let cursorY = y;
+  for (const line of lines) {
+    if (!line) {
+      continue;
+    }
+    page.drawText(line, {
+      x,
+      y: cursorY,
+      size: fontSize,
+      font,
+      color: rgb(0.05, 0.1, 0.2),
+      maxWidth,
+      lineHeight: fontSize + 2,
+    });
+    cursorY -= fontSize + 2;
+  }
 }
 
-async function createTemplateOverlayPdf(templateFileName, overlayTitle, overlayLines) {
+function getTemplatePlacements(documentKey, payload) {
+  const common = {
+    enterpriseNumber: String(payload.enterpriseNumber || ""),
+    companyName: String(payload.companyName || ""),
+    companyAddress: String(payload.companyAddress || ""),
+    newAddress: String(payload.newAddress || ""),
+    changeDate: String(payload.changeDate || ""),
+    agDate: String(payload.agDate || ""),
+    depositaireName: String(payload.depositaireName || ""),
+    depositaireFunction: String(payload.depositaireFunction || ""),
+    userName: String(payload.userName || ""),
+    userEmail: String(payload.userEmail || ""),
+  };
+
+  const byDocument = {
+    "formulaire1entr": [
+      { page: 0, x: 250, y: 114, size: 10, maxWidth: 230, maxLines: 1, text: common.enterpriseNumber },
+      { page: 0, x: 210, y: 70, size: 10, maxWidth: 290, maxLines: 2, text: common.companyName },
+      { page: 0, x: 210, y: 44, size: 9, maxWidth: 300, maxLines: 2, text: common.companyAddress },
+      { page: 0, x: 210, y: 20, size: 9, maxWidth: 300, maxLines: 2, text: common.newAddress },
+      { page: 1, x: 140, y: 595, size: 9, maxWidth: 180, maxLines: 1, text: common.changeDate },
+      { page: 1, x: 385, y: 595, size: 9, maxWidth: 140, maxLines: 1, text: common.agDate },
+    ],
+    "formulaire2entr": [
+      { page: 0, x: 245, y: 108, size: 10, maxWidth: 230, maxLines: 1, text: common.enterpriseNumber },
+      { page: 0, x: 165, y: 84, size: 10, maxWidth: 340, maxLines: 2, text: common.companyName },
+      { page: 0, x: 165, y: 60, size: 9, maxWidth: 340, maxLines: 2, text: common.newAddress },
+      { page: 0, x: 180, y: 36, size: 9, maxWidth: 220, maxLines: 1, text: common.changeDate },
+    ],
+    "attestation-identite": [
+      { page: 0, x: 180, y: 626, size: 10, maxWidth: 340, maxLines: 2, text: common.companyName },
+      { page: 0, x: 180, y: 595, size: 10, maxWidth: 220, maxLines: 1, text: common.enterpriseNumber },
+      { page: 0, x: 180, y: 468, size: 9, maxWidth: 340, maxLines: 2, text: common.depositaireName },
+      { page: 0, x: 180, y: 442, size: 9, maxWidth: 340, maxLines: 2, text: common.depositaireFunction },
+      { page: 0, x: 180, y: 318, size: 9, maxWidth: 340, maxLines: 2, text: `${common.userName} - ${common.userEmail}` },
+    ],
+  };
+
+  return byDocument[documentKey] || [];
+}
+
+async function createTemplateOverlayPdf(templateFileName, documentKey, payload) {
   const templatePath = await resolveTemplateFilePath(templateFileName);
   if (!templatePath) {
     throw new Error(`Template introuvable: ${templateFileName}`);
@@ -1525,45 +1578,20 @@ async function createTemplateOverlayPdf(templateFileName, overlayTitle, overlayL
   const templateBytes = await fs.readFile(templatePath);
   const pdfDoc = await PDFDocument.load(templateBytes);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const pageWidth = 595.28;
-  const pageHeight = 841.89;
-  const margin = 48;
-  const bodySize = 11;
-  const lineHeight = 16;
-  const maxWidth = pageWidth - margin * 2;
-
-  // Keep original template pages unchanged and append prefilled data as annex.
-  let page = pdfDoc.addPage([pageWidth, pageHeight]);
-  let y = pageHeight - margin;
-
-  page.drawText(String(overlayTitle || "Donnees pre-remplies"), {
-    x: margin,
-    y,
-    size: 14,
-    font: boldFont,
-    color: rgb(0.08, 0.14, 0.24),
-  });
-  y -= 26;
-
-  const lines = wrapPdfLines(overlayLines.join("\n"), font, bodySize, maxWidth);
-  for (const line of lines) {
-    if (y < margin) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      y = pageHeight - margin;
-    }
-
-    if (line) {
-      page.drawText(line, {
-        x: margin,
-        y,
-        size: bodySize,
-        font,
-        color: rgb(0.08, 0.14, 0.24),
-      });
-    }
-    y -= lineHeight;
+  const placements = getTemplatePlacements(documentKey, payload);
+  for (const placement of placements) {
+    const page = pdfDoc.getPage(Math.max(0, Math.min(placement.page, pdfDoc.getPageCount() - 1)));
+    drawWrappedOnPage(
+      page,
+      font,
+      placement.text,
+      placement.x,
+      placement.y,
+      placement.size,
+      placement.maxWidth,
+      placement.maxLines,
+    );
   }
 
   const bytes = await pdfDoc.save();
@@ -1720,7 +1748,7 @@ async function buildDossierDocument(documentKey, body) {
   };
 
   if (dossierPdfTemplates[documentKey]) {
-    const overlayLines = buildDossierOverlayLines({
+    const pdfBuffer = await createTemplateOverlayPdf(dossierPdfTemplates[documentKey], documentKey, {
       companyName,
       enterpriseNumber,
       companyAddress,
@@ -1732,12 +1760,6 @@ async function buildDossierDocument(documentKey, body) {
       userName,
       userEmail,
     });
-
-    const pdfBuffer = await createTemplateOverlayPdf(
-      dossierPdfTemplates[documentKey],
-      `Aktly Lite - Pre-remplissage (${formatNowForHeader()})`,
-      overlayLines,
-    );
 
     return {
       fileName: `${documentKey}-${fileTimestamp}.pdf`,
