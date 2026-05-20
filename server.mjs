@@ -1524,49 +1524,46 @@ async function createTemplateOverlayPdf(templateFileName, overlayTitle, overlayL
 
   const templateBytes = await fs.readFile(templatePath);
   const pdfDoc = await PDFDocument.load(templateBytes);
-  const page = pdfDoc.getPage(0);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const pageWidth = page.getWidth();
-  const pageHeight = page.getHeight();
-  const boxX = 40;
-  const boxY = Math.max(40, pageHeight - 245);
-  const boxWidth = pageWidth - 80;
-  const boxHeight = 195;
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 48;
+  const bodySize = 11;
+  const lineHeight = 16;
+  const maxWidth = pageWidth - margin * 2;
 
-  page.drawRectangle({
-    x: boxX,
-    y: boxY,
-    width: boxWidth,
-    height: boxHeight,
-    color: rgb(1, 1, 1),
-    opacity: 0.92,
-    borderColor: rgb(0.18, 0.27, 0.42),
-    borderWidth: 0.8,
-  });
+  // Keep original template pages unchanged and append prefilled data as annex.
+  let page = pdfDoc.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - margin;
 
-  let textY = boxY + boxHeight - 20;
-  page.drawText(overlayTitle, {
-    x: boxX + 12,
-    y: textY,
-    size: 11,
+  page.drawText(String(overlayTitle || "Donnees pre-remplies"), {
+    x: margin,
+    y,
+    size: 14,
     font: boldFont,
     color: rgb(0.08, 0.14, 0.24),
   });
+  y -= 26;
 
-  textY -= 16;
-  for (const line of overlayLines) {
-    page.drawText(String(line || ""), {
-      x: boxX + 12,
-      y: textY,
-      size: 9,
-      font,
-      color: rgb(0.08, 0.14, 0.24),
-      maxWidth: boxWidth - 24,
-      lineHeight: 11,
-    });
-    textY -= 16;
+  const lines = wrapPdfLines(overlayLines.join("\n"), font, bodySize, maxWidth);
+  for (const line of lines) {
+    if (y < margin) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      y = pageHeight - margin;
+    }
+
+    if (line) {
+      page.drawText(line, {
+        x: margin,
+        y,
+        size: bodySize,
+        font,
+        color: rgb(0.08, 0.14, 0.24),
+      });
+    }
+    y -= lineHeight;
   }
 
   const bytes = await pdfDoc.save();
