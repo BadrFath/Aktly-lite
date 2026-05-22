@@ -1532,6 +1532,7 @@ function getTemplatePlacements(documentKey, payload) {
   const common = {
     enterpriseNumber: String(payload.enterpriseNumber || ""),
     companyName: String(payload.companyName || ""),
+    legalForm: String(payload.legalForm || ""),
     companyAddress: String(payload.companyAddress || ""),
     newAddress: String(payload.newAddress || ""),
     changeDate: String(payload.changeDate || ""),
@@ -1544,12 +1545,19 @@ function getTemplatePlacements(documentKey, payload) {
 
   const byDocument = {
     "formulaire1entr": [
-      { page: 0, x: 250, y: 114, size: 10, maxWidth: 230, maxLines: 1, text: common.enterpriseNumber },
-      { page: 0, x: 210, y: 70, size: 10, maxWidth: 290, maxLines: 2, text: common.companyName },
-      { page: 0, x: 210, y: 44, size: 9, maxWidth: 300, maxLines: 2, text: common.companyAddress },
-      { page: 0, x: 210, y: 20, size: 9, maxWidth: 300, maxLines: 2, text: common.newAddress },
-      { page: 1, x: 140, y: 595, size: 9, maxWidth: 180, maxLines: 1, text: common.changeDate },
-      { page: 1, x: 385, y: 595, size: 9, maxWidth: 140, maxLines: 1, text: common.agDate },
+      // Page 0 — Volet A/B identification section
+      { page: 0, x: 270, y: 611, size: 9, maxWidth: 110, maxLines: 1, text: common.enterpriseNumber },
+      { page: 0, x: 200, y: 593, size: 9, maxWidth: 355, maxLines: 2, text: common.companyName },
+      { page: 0, x: 237, y: 548, size: 9, maxWidth: 315, maxLines: 1, text: common.legalForm },
+      { page: 0, x: 219, y: 521, size: 8, maxWidth: 355, maxLines: 1, text: common.companyAddress },
+      // Page 1 — Volet B publication copy (Moniteur belge)
+      { page: 1, x: 222, y: 648, size: 9, maxWidth: 110, maxLines: 1, text: common.enterpriseNumber },
+      { page: 1, x: 222, y: 625, size: 9, maxWidth: 330, maxLines: 1, text: common.companyName },
+      { page: 1, x: 222, y: 598, size: 9, maxWidth: 330, maxLines: 1, text: common.legalForm },
+      { page: 1, x: 222, y: 581, size: 9, maxWidth: 330, maxLines: 1, text: common.companyAddress },
+      { page: 1, x: 192, y: 554, size: 9, maxWidth: 380, maxLines: 1, text: common.agDate },
+      { page: 1, x: 120, y: 537, size: 9, maxWidth: 440, maxLines: 1, text: common.newAddress },
+      { page: 1, x: 120, y: 526, size: 9, maxWidth: 440, maxLines: 1, text: common.changeDate },
     ],
     "formulaire2entr": [
       { page: 0, x: 245, y: 108, size: 10, maxWidth: 230, maxLines: 1, text: common.enterpriseNumber },
@@ -1751,6 +1759,7 @@ async function buildDossierDocument(documentKey, body) {
     const pdfBuffer = await createTemplateOverlayPdf(dossierPdfTemplates[documentKey], documentKey, {
       companyName,
       enterpriseNumber,
+      legalForm,
       companyAddress,
       newAddress,
       changeDate,
