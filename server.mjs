@@ -1235,6 +1235,32 @@ function normalizeBnbCompanyPayload(raw, enterpriseNumber, langue) {
     raw?.status ||
     (langue === "nl" ? "Actief" : "Actif");
 
+  // Build individual address fields for formulaire1 and other templates
+  const streetVal = String(rawAddress?.street || "").trim();
+  const houseNumberVal = String(rawAddress?.number || rawAddress?.houseNumber || "").trim();
+  const boxVal = String(rawAddress?.box || "").trim();
+  const postalCodeVal = String(rawAddress?.postalCode || rawAddress?.zipCode || rawAddress?.zip || rawAddress?.postal_code || "").trim();
+  const municipalityVal = String(rawAddress?.city || rawAddress?.municipality || rawAddress?.locality || "").trim();
+  const countryVal = String(rawAddress?.country || "Belgique").trim();
+
+  // If rawAddress is a string, parse it
+  let parsedAddress = null;
+  if (typeof rawAddress === "string") {
+    parsedAddress = parseAddressParts(rawAddress);
+  } else if (!postalCodeVal && !municipalityVal && address !== "Adresse non disponible") {
+    parsedAddress = parseAddressParts(address);
+  }
+
+  const finalAddress = {
+    street: streetVal || parsedAddress?.street || "",
+    houseNumber: houseNumberVal || parsedAddress?.houseNumber || "",
+    box: boxVal || parsedAddress?.box || "",
+    postalCode: postalCodeVal || parsedAddress?.postalCode || "",
+    municipality: municipalityVal || parsedAddress?.municipality || "",
+    country: countryVal || "Belgique",
+    full: typeof address === "string" ? address : (parsedAddress?.full || ""),
+  };
+
   return {
     lang_entre: langue || "fr",
     number,
@@ -1246,12 +1272,18 @@ function normalizeBnbCompanyPayload(raw, enterpriseNumber, langue) {
         ],
       },
     ],
-    address,
+    address: finalAddress.full || address,
+    addresses: [finalAddress],
     typeOfEnterprise: raw?.typeOfEnterprise || raw?.enterpriseType || "ELP",
     juridicalSituation: {
       status: {
         description: [{ language: langue || "fr", value: String(status) }],
       },
+    },
+    enterprise: {
+      legalForm: raw?.enterprise?.legalForm || raw?.legalForm || raw?.juridicalForm || null,
+      startDate: raw?.enterprise?.startDate || null,
+      vatLiable: null,
     },
   };
 }
@@ -2042,7 +2074,19 @@ async function buildDossierDocument(documentKey, body) {
   };
 
   if (documentKey === "formulaire1entr") {
-    const address = companyData?.addresses?.[0] || {};
+    let address = companyData?.addresses?.[0] || {};
+    // Fallback: if postalCode/municipality missing, parse from full address string
+    if (!address.postalCode && !address.municipality && companyAddress && companyAddress !== "Non renseignee") {
+      const parsed = parseAddressParts(companyAddress);
+      address = {
+        street: address.street || parsed.street,
+        houseNumber: address.houseNumber || parsed.houseNumber,
+        box: address.box || parsed.box,
+        postalCode: parsed.postalCode,
+        municipality: parsed.municipality,
+        country: address.country || parsed.country || "Belgique",
+      };
+    }
     const pubText = body?.pub_text || null;
     let normalizedPubText = {};
     if (typeof pubText === "string" && pubText.trim()) {
