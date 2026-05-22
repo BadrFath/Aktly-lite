@@ -1480,9 +1480,7 @@ function pickDepositaireName(depositaire) {
 }
 
 const dossierPdfTemplates = {
-  "formulaire1entr": "formulaire1entr.pdf",
-  "formulaire2entr": "formulaire2entr.pdf",
-  "attestation-identite": "attestation-identite-modele-1-fr.pdf",
+  // All documents now use HTML templates; kept for reference only
 };
 
 async function resolveTemplateFilePath(fileName) {
@@ -1503,10 +1501,10 @@ async function resolveTemplateFilePath(fileName) {
   return "";
 }
 
-async function resolveHtmlTemplatePath(fileName) {
+async function resolveHtmlTemplatePath(styleFolder, fileName) {
   const candidates = [
-    path.join(distDir, "style3", fileName),
-    path.resolve("frontend", "public", "style3", fileName),
+    path.join(distDir, styleFolder, fileName),
+    path.resolve("frontend", "public", styleFolder, fileName),
   ];
 
   for (const candidate of candidates) {
@@ -1521,8 +1519,106 @@ async function resolveHtmlTemplatePath(fileName) {
   return "";
 }
 
+/** Format a date string "YYYY-MM-DD" to "D mois YYYY" in French */
+function formatDateFr(dateStr) {
+  if (!dateStr) return "";
+  const months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const day = parseInt(m[3], 10);
+    const month = months[parseInt(m[2], 10) - 1] || "";
+    return `${day} ${month} ${m[1]}`;
+  }
+  return String(dateStr);
+}
+
+/**
+ * Generate the publication text (procès-verbal) HTML from available data.
+ * Returns { part1, part2 } where part2 is overflow if part1 is very long.
+ */
+function generatePubTextHtml(data) {
+  const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const enterpriseNumber = he(data.enterpriseNumber || "");
+  const companyName = he(data.companyName || "");
+  const dateAg = formatDateFr(data.dateAssemblee || data.changeDate || "");
+  const changeDate = formatDateFr(data.changeDate || data.dateAssemblee || "");
+  const faitA = he(data.faitA || "");
+  const depositaireName = he(data.depositaireName || "");
+  const newStreet = he(data.newStreet || "");
+  const newPostal = he(data.newPostal || "");
+  const newCity = he(data.newCity || "");
+  const newAddress = `${newStreet}, ${newPostal} ${newCity}`.trim().replace(/^,\s*/, "");
+
+  const lines = [];
+
+  if (data.services?.cessionParts) {
+    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Cession de parts sociales.`);
+    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
+    lines.push(``);
+    lines.push(`Puisque la totalité du capital est représentée, l'assemblée peut légitimement délibérer sur l'ordre du jour:`);
+    lines.push(`- Cession de parts sociales`);
+    lines.push(``);
+    lines.push(`Décisions:`);
+    lines.push(``);
+    lines.push(`I. Cession de parts sociales`);
+    lines.push(`Les parts sociales sont cédées conformément aux dispositions convenues entre les parties.`);
+  } else if (data.services?.addressChange) {
+    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Transfert de siège social.`);
+    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
+    lines.push(``);
+    lines.push(`Puisque la totalité du capital est représentée, l'assemblée peut légitimement délibérer sur l'ordre du jour:`);
+    lines.push(`- Transfert de siège social`);
+    lines.push(``);
+    lines.push(`Décisions:`);
+    lines.push(``);
+    lines.push(`I. Transfert de siège social`);
+    if (newAddress && newAddress !== ", ") {
+      lines.push(`Le siège social est transféré, à compter du ${changeDate}, à l'adresse suivante : ${newAddress}.`);
+    }
+  } else if (data.services?.dirigeants) {
+    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Modification des administrateurs.`);
+    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
+    lines.push(``);
+    lines.push(`Puisque la totalité du capital est représentée, l'assemblée peut légitimement délibérer sur l'ordre du jour:`);
+    lines.push(`- Démission administrateur`);
+    lines.push(`- Nomination d'administrateur`);
+    lines.push(``);
+    lines.push(`Décisions:`);
+    lines.push(``);
+    lines.push(`I. Démission et nomination d'administrateur`);
+    lines.push(`L'assemblée décide de modifier la composition du conseil d'administration.`);
+  } else {
+    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Modification statutaire.`);
+    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
+    lines.push(``);
+    lines.push(`L'assemblée délibère sur les modifications statutaires.`);
+  }
+
+  lines.push(``);
+  lines.push(`L'ordre du jour étant épuisé, la séance est levée.`);
+  lines.push(``);
+  lines.push(`Signatures:`);
+  if (depositaireName) {
+    lines.push(`- ${depositaireName}`);
+  }
+
+  // Split into part1 (first ~40 lines) and part2 (overflow) — template page 2/3 split
+  const SPLIT = 40;
+  const part1Lines = lines.slice(0, SPLIT);
+  const part2Lines = lines.slice(SPLIT);
+
+  return {
+    part1: part1Lines.map(l => l === "" ? "<br>" : l).join("<br>"),
+    part2: part2Lines.length > 0 ? part2Lines.map(l => l === "" ? "<br>" : l).join("<br>") : "",
+  };
+}
+
 async function buildFormulaire1HtmlPage(data, autoprint = false) {
-  const templatePath = await resolveHtmlTemplatePath("formulaire1-template.html");
+  const templatePath = await resolveHtmlTemplatePath("style3", "formulaire1-template.html");
   if (!templatePath) {
     throw new Error("Template formulaire1-template.html introuvable");
   }
@@ -1561,17 +1657,135 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   html = html.replaceAll("__ADDR_MUNICIPALITY__", he(data.address?.municipality));
   html = html.replaceAll("__ADDR_COUNTRY__", he(data.address?.country || "Belgique"));
   html = html.replaceAll("__PHRASE__", phrase); // raw – may contain <br>
-  html = html.replaceAll("__PUB_TEXT_PART1__", data.pubText?.part1 || "");
-  html = html.replaceAll("__PUB_TEXT_PART2__", data.pubText?.part2 || "");
+
+  // Auto-generate pub_text if not provided
+  const pubText = (data.pubText?.part1)
+    ? data.pubText
+    : generatePubTextHtml({
+        enterpriseNumber: formattedNumber,
+        companyName: data.companyName,
+        dateAssemblee: data.dateAssemblee,
+        changeDate: data.changeDate,
+        faitA: data.faitA,
+        depositaireName: `${data.userFirstName || ""} ${data.userLastName || ""}`.trim(),
+        newStreet: data.newAddress?.street || data.address?.street || "",
+        newPostal: data.newAddress?.postalCode || "",
+        newCity: data.newAddress?.municipality || "",
+        services: data.services,
+      });
+
+  html = html.replaceAll("__PUB_TEXT_PART1__", pubText.part1 || "");
+  html = html.replaceAll("__PUB_TEXT_PART2__", pubText.part2 || "");
   html = html.replaceAll("__USER_FIRST_NAME__", he(data.userFirstName));
   html = html.replaceAll("__USER_LAST_NAME__", he(data.userLastName));
   html = html.replaceAll("__FAIT_A__", he(data.faitA));
-  html = html.replaceAll("__DATE_ASSEMBLEE__", he(data.dateAssemblee));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee)));
 
   if (autoprint) {
     html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
   }
 
+  return html;
+}
+
+async function buildFormulaire2HtmlPage(data, autoprint = false) {
+  const templatePath = await resolveHtmlTemplatePath("style4", "formulaire2-template.html");
+  if (!templatePath) throw new Error("Template formulaire2-template.html introuvable");
+
+  let html = await fs.readFile(templatePath, "utf-8");
+  const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const rawNumber = String(data.enterpriseNumber || "");
+  const digits = rawNumber.replace(/\D/g, "");
+  const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
+
+  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber));
+  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName));
+  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm));
+  html = html.replaceAll("__CAPITAL_CURRENCY__", he(data.capitalCurrency || "EUR"));
+  html = html.replaceAll("__CAPITAL_AMOUNT__", he(data.capitalAmount || ""));
+  html = html.replaceAll("__FISCAL_YEAR_END_DAY__", he(data.fiscalYearEndDay || ""));
+  html = html.replaceAll("__FISCAL_YEAR_END_MONTH__", he(data.fiscalYearEndMonth || ""));
+  html = html.replaceAll("__ANNUAL_MEETING_MONTH__", he(data.annualMeetingMonth || ""));
+  html = html.replaceAll("__DATE_CONSTITUTION__", he(formatDateFr(data.dateConstitution || "")));
+  html = html.replaceAll("__ADDRESS__", he(data.companyAddress || ""));
+  html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "")));
+
+  const users = data.users || [];
+  for (let i = 1; i <= 5; i++) {
+    const u = users[i - 1] || {};
+    html = html.replaceAll(`__USER_${i}_NAME__`, he(u.name || ""));
+    html = html.replaceAll(`__USER_${i}_ID__`, he(u.idNumber || ""));
+    html = html.replaceAll(`__USER_${i}_FUNCTION__`, he(u.function || ""));
+  }
+
+  if (autoprint) {
+    html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
+  }
+  return html;
+}
+
+async function buildAttestation1HtmlPage(data, autoprint = false) {
+  const templatePath = await resolveHtmlTemplatePath("style1", "attestation1-template.html");
+  if (!templatePath) throw new Error("Template attestation1-template.html introuvable");
+
+  let html = await fs.readFile(templatePath, "utf-8");
+  const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const rawNumber = String(data.enterpriseNumber || "");
+  const digits = rawNumber.replace(/\D/g, "");
+  const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
+
+  html = html.replaceAll("__FIRST_NAME__", he(data.firstName || ""));
+  html = html.replaceAll("__LAST_NAME__", he(data.lastName || ""));
+  html = html.replaceAll("__DATE_OF_BIRTH__", he(data.dateOfBirth || ""));
+  html = html.replaceAll("__PLACE_OF_BIRTH__", he(data.placeOfBirth || ""));
+  html = html.replaceAll("__NATIONAL_ID__", he(data.nationalId || ""));
+  html = html.replaceAll("__ADDRESS_FULL__", he(data.addressFull || ""));
+  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName || ""));
+  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber));
+  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm || ""));
+  html = html.replaceAll("__FUNCTION__", he(data.depositaireFunction || ""));
+  html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "")));
+
+  if (autoprint) {
+    html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
+  }
+  return html;
+}
+
+async function buildDeclarationHtmlPage(data, autoprint = false) {
+  const templatePath = await resolveHtmlTemplatePath("style2", "declaration-template.html");
+  if (!templatePath) throw new Error("Template declaration-template.html introuvable");
+
+  let html = await fs.readFile(templatePath, "utf-8");
+  const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const rawNumber = String(data.enterpriseNumber || "");
+  const digits = rawNumber.replace(/\D/g, "");
+  const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
+
+  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber));
+  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName || ""));
+  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm || ""));
+  html = html.replaceAll("__ADDRESS__", he(data.companyAddress || ""));
+  html = html.replaceAll("__SIGNATORY_NAME__", he(data.signatoryName || ""));
+  html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "")));
+
+  const dirigeants = data.dirigeants || [];
+  for (let i = 1; i <= 3; i++) {
+    const d = dirigeants[i - 1] || {};
+    html = html.replaceAll(`__DIRIGEANT_${i}_NAME__`, he(d.name || ""));
+    html = html.replaceAll(`__DIRIGEANT_${i}_ID__`, he(d.idNumber || ""));
+    html = html.replaceAll(`__DIRIGEANT_${i}_FUNCTION__`, he(d.function || ""));
+  }
+
+  if (autoprint) {
+    html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
+  }
   return html;
 }
 
@@ -1844,11 +2058,16 @@ async function buildDossierDocument(documentKey, body) {
 
     const services = {
       cessionParts: Boolean(body?.cession_parts_service),
-      addressChange: Boolean(body?.address_service),
+      addressChange: Boolean(body?.address_service) || Boolean(addressInfo?.rue),
       dirigeants: Boolean(body?.dirigeants_service),
     };
+    // Default to addressChange if no service specified but we have address info
+    if (!services.cessionParts && !services.addressChange && !services.dirigeants && (addressInfo?.rue || addressInfo?.commune)) {
+      services.addressChange = true;
+    }
 
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
+    const dateForPv = agDate !== "Non renseignee" ? agDate : changeDate;
 
     const htmlContent = await buildFormulaire1HtmlPage({
       enterpriseNumber,
@@ -1862,17 +2081,118 @@ async function buildDossierDocument(documentKey, body) {
         municipality: address.municipality || "",
         country: address.country || "Belgique",
       },
-      pubText: normalizedPubText,
+      newAddress: {
+        street: newStreet,
+        postalCode: newPostal,
+        municipality: newCity,
+      },
+      pubText: Object.keys(normalizedPubText).length > 0 ? normalizedPubText : null,
       services,
       userFirstName: String(depositaire?.dirigeant?.given_name || user?.given_name || "").trim(),
       userLastName: String(depositaire?.dirigeant?.nom || user?.nom || user?.name || "").trim(),
-      faitA: String(addressInfo?.commune || "").trim(),
-      dateAssemblee: changeDate || agDate || "",
+      faitA: newCity || String(addressInfo?.commune || "").trim(),
+      dateAssemblee: dateForPv,
+      changeDate,
+      depositaireName,
       autoprint,
     });
 
     return {
       fileName: `formulaire1entr-${fileTimestamp}.html`,
+      mimeType: "text/html; charset=utf-8",
+      content: Buffer.from(htmlContent, "utf-8"),
+    };
+  }
+
+  if (documentKey === "formulaire2entr") {
+    const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
+    const financialData = companyData?.financialData || {};
+    const capital = companyData?.capital || {};
+    const users = (body?.users || depositaire?.users || []).map((u) => ({
+      name: String(u?.name || u?.nom || "").trim(),
+      idNumber: String(u?.idNumber || u?.id_number || "").trim(),
+      function: String(u?.function || u?.fonction || "").trim(),
+    }));
+    // Add depositaire as first user if no users provided
+    if (users.length === 0 && depositaireName) {
+      users.push({ name: depositaireName, idNumber: "", function: depositaireFunction });
+    }
+
+    const htmlContent = await buildFormulaire2HtmlPage({
+      enterpriseNumber,
+      companyName,
+      legalForm,
+      companyAddress,
+      capitalCurrency: String(capital?.currency || "EUR"),
+      capitalAmount: String(capital?.amount || ""),
+      fiscalYearEndDay: String(financialData?.fiscalYearEndDay || ""),
+      fiscalYearEndMonth: String(financialData?.fiscalYearEndMonth || ""),
+      annualMeetingMonth: String(financialData?.annualMeetingMonth || ""),
+      dateConstitution: String(companyData?.enterprise?.startDate || ""),
+      faitA: newCity || String(addressInfo?.commune || "").trim(),
+      dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
+      users,
+      autoprint,
+    });
+
+    return {
+      fileName: `formulaire2entr-${fileTimestamp}.html`,
+      mimeType: "text/html; charset=utf-8",
+      content: Buffer.from(htmlContent, "utf-8"),
+    };
+  }
+
+  if (documentKey === "attestation-identite") {
+    const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
+    const person = depositaire?.dirigeant || {};
+    const htmlContent = await buildAttestation1HtmlPage({
+      enterpriseNumber,
+      companyName,
+      legalForm,
+      firstName: String(person?.given_name || person?.prenom || user?.given_name || "").trim(),
+      lastName: String(person?.nom || person?.family_name || user?.nom || "").trim(),
+      dateOfBirth: String(person?.date_naissance || person?.birth_date || "").trim(),
+      placeOfBirth: String(person?.lieu_naissance || person?.birth_place || "").trim(),
+      nationalId: String(person?.national_id || person?.id_number || "").trim(),
+      addressFull: String(person?.adresse || person?.address || companyAddress || "").trim(),
+      depositaireFunction,
+      faitA: newCity || String(addressInfo?.commune || "").trim(),
+      dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
+      autoprint,
+    });
+
+    return {
+      fileName: `attestation-identite-${fileTimestamp}.html`,
+      mimeType: "text/html; charset=utf-8",
+      content: Buffer.from(htmlContent, "utf-8"),
+    };
+  }
+
+  if (documentKey === "pv-assemblee-generale") {
+    const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
+    const dirigeants = (body?.dirigeants || depositaire?.dirigeants || []).map((d) => ({
+      name: String(d?.name || d?.nom || `${d?.given_name || ""} ${d?.family_name || d?.nom || ""}`.trim() || "").trim(),
+      idNumber: String(d?.idNumber || d?.id_number || d?.national_id || "").trim(),
+      function: String(d?.function || d?.fonction || "").trim(),
+    }));
+    if (dirigeants.length === 0 && depositaireName) {
+      dirigeants.push({ name: depositaireName, idNumber: "", function: depositaireFunction });
+    }
+
+    const htmlContent = await buildDeclarationHtmlPage({
+      enterpriseNumber,
+      companyName,
+      legalForm,
+      companyAddress,
+      signatoryName: depositaireName,
+      faitA: newCity || String(addressInfo?.commune || "").trim(),
+      dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
+      dirigeants,
+      autoprint,
+    });
+
+    return {
+      fileName: `pv-assemblee-generale-${fileTimestamp}.html`,
       mimeType: "text/html; charset=utf-8",
       content: Buffer.from(htmlContent, "utf-8"),
     };
