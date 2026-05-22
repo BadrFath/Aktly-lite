@@ -7,14 +7,11 @@ const form1DownloadBaseUrl = (
   import.meta.env.VITE_LEGAKTE_FORMULAIRE1_DOWNLOAD_BASE_URL ??
   'https://form.legakte.be/pdfs/formulaire1'
 ).trim()
-const form1DemandeIdStorageKey = 'aktly_formulaire1_demande_id'
 
-const generateUuidFallback = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `demande-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
-}
+const isUuid = (value) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || '').trim(),
+  )
 
 const resolveDemandeId = (draft) => {
   const rawValue =
@@ -30,20 +27,9 @@ const resolveDemandeId = (draft) => {
   return normalized
 }
 
-const getOrCreateStoredForm1DemandeId = () => {
-  const existing = String(localStorage.getItem(form1DemandeIdStorageKey) || '').trim()
-  if (existing && existing.toLowerCase() !== 'n/a') {
-    return existing
-  }
-
-  const created = generateUuidFallback()
-  localStorage.setItem(form1DemandeIdStorageKey, created)
-  return created
-}
-
-const buildFormulaire1DownloadUrl = (draft, fallbackDemandeId = '') => {
-  const demandeId = resolveDemandeId(draft) || String(fallbackDemandeId || '').trim()
-  if (!form1DownloadBaseUrl || !demandeId) {
+const buildFormulaire1DownloadUrl = (draft) => {
+  const demandeId = resolveDemandeId(draft)
+  if (!form1DownloadBaseUrl || !demandeId || !isUuid(demandeId)) {
     return ''
   }
   const separator = form1DownloadBaseUrl.includes('?') ? '&' : '?'
@@ -133,10 +119,9 @@ const resolveCompanyDisplayName = (companyData) => {
 function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
   const navigate = useNavigate()
   const [draft, setDraft] = useState(() => readDossierSnapshot())
-  const [generatedForm1DemandeId] = useState(() => getOrCreateStoredForm1DemandeId())
   const dossierFiles = useMemo(
-    () => getDossierFiles(uiLanguage, buildFormulaire1DownloadUrl(draft, generatedForm1DemandeId)),
-    [uiLanguage, draft, generatedForm1DemandeId],
+    () => getDossierFiles(uiLanguage, buildFormulaire1DownloadUrl(draft)),
+    [uiLanguage, draft],
   )
   const t = uiLanguage === 'nl'
     ? {
@@ -238,13 +223,6 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [])
-
-  useEffect(() => {
-    const realDemandeId = resolveDemandeId(draft)
-    if (realDemandeId) {
-      localStorage.setItem(form1DemandeIdStorageKey, realDemandeId)
-    }
-  }, [draft])
 
   const onPrintDossier = () => {
     window.print()
