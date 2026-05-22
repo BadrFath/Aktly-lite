@@ -1813,6 +1813,21 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
     html = html.replaceAll(`__USER_${i}_FUNCTION__`, he(u.function || ""));
   }
 
+  // Replace signatory pattern "__TOKEN__ __TOKEN__ agissant" with the depositaire name
+  const signatoryName = he(data.signatoryName || data.depositaireName || "");
+  html = html.replace(/__TOKEN__\s+__TOKEN__\s+agissant/g, `${signatoryName} agissant`);
+
+  // Replace "le __TOKEN__" (signing date line) with the assembly date
+  const dateStr = he(formatDateFr(data.dateAssemblee || ""));
+  html = html.replace(/le\s+__TOKEN__/g, `le ${dateStr}`);
+
+  // Replace email __TOKEN__
+  html = html.replace(/Adresse e-m<[^>]*>ail[^>]*>\s*\(6\)\s*:\s*__TOKEN__/g,
+    `Adresse e-mail (6) : ${he(data.userEmail || "")}`);
+
+  // Blank out all remaining __TOKEN__ (succursale, dissolution, liquidation, registre, site web, etc.)
+  html = html.replaceAll("__TOKEN__", "");
+
   if (autoprint) {
     html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
   }
@@ -2246,6 +2261,9 @@ async function buildDossierDocument(documentKey, body) {
       dateConstitution: String(companyData?.enterprise?.startDate || ""),
       faitA: newCity || String(addressInfo?.commune || "").trim(),
       dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
+      depositaireName,
+      signatoryName: depositaireName,
+      userEmail: String(user?.email || ""),
       users,
       autoprint,
     });
