@@ -39,6 +39,54 @@ const bceWsPassword = (process.env.BCE_WS_PASSWORD || "cBRABbE6qmvvFWBEnc6RJJVd"
 const bceCacheTtlMs = Number(process.env.BCE_CACHE_TTL_MS || 5 * 60 * 1000);
 const bceCompanyCache = new Map();
 
+// Translation map for Belgian legal forms (fr <-> nl)
+const LEGAL_FORM_FR_TO_NL = {
+  "Société à responsabilité limitée": "Besloten Vennootschap",
+  "SRL": "BV",
+  "SPRL": "BVBA",
+  "Société Privée à Responsabilité Limitée": "Besloten Vennootschap met Beperkte Aansprakelijkheid",
+  "Société Anonyme": "Naamloze Vennootschap",
+  "SA": "NV",
+  "Société en commandite simple": "Gewone commanditaire vennootschap",
+  "SCS": "CommV",
+  "SComm": "CommV",
+  "Société en commandite par actions": "Commanditaire vennootschap op aandelen",
+  "SCA": "CVA",
+  "Société en nom collectif": "Vennootschap onder firma",
+  "SNC": "VOF",
+  "Société coopérative": "Coöperatieve vennootschap",
+  "SC": "CV",
+  "Association sans but lucratif": "Vereniging zonder winstoogmerk",
+  "ASBL": "VZW",
+  "Association internationale sans but lucratif": "Internationale vereniging zonder winstoogmerk",
+  "AISBL": "IVZW",
+  "Fondation": "Stichting",
+  "Fondation privée": "Private stichting",
+  "Société de droit commun": "Maatschap",
+  "Entreprise individuelle": "Eenmanszaak",
+  "Société agricole": "Landbouwvennootschap",
+  "SA": "NV",
+  "Groupement d'intérêt économique": "Economisch samenwerkingsverband",
+  "GIE": "ESV",
+  "Société européenne": "Europese vennootschap",
+  "SE": "SE",
+};
+const LEGAL_FORM_NL_TO_FR = Object.fromEntries(
+  Object.entries(LEGAL_FORM_FR_TO_NL).map(([fr, nl]) => [nl, fr])
+);
+
+function translateLegalForm(legalForm, targetLang) {
+  if (!legalForm) return legalForm;
+  const normalizedTarget = String(targetLang || "fr").toLowerCase();
+  if (normalizedTarget === "fr") {
+    return LEGAL_FORM_NL_TO_FR[legalForm] || legalForm;
+  }
+  if (normalizedTarget === "nl") {
+    return LEGAL_FORM_FR_TO_NL[legalForm] || legalForm;
+  }
+  return legalForm;
+}
+
 // Source: C:/Users/hp/Downloads/Compressed/Aktly-main/storage/logs/laravel.log
 // (entries "response bce" for enterprise 1022158878)
 const companyDirectoryFromAktlyMain = {
@@ -541,7 +589,13 @@ function parseBceEnterpriseResponse(xml, enterpriseNumber, langue) {
   const periodXml = allTagBlocks(enterpriseXml, "Period")[0] || "";
   const periodBegin = firstTagValue(periodXml, "Begin");
   const juridicalFormXml = allTagBlocks(enterpriseXml, "JuridicalForm")[0] || "";
+  const legalFormFr = pickDescriptionValue(juridicalFormXml, "fr") || null;
+  const legalFormNl = pickDescriptionValue(juridicalFormXml, "nl") || null;
   const legalForm = pickDescriptionValue(juridicalFormXml, langue) || null;
+  const legalFormDescriptions = [
+    legalFormFr ? { language: "fr", value: legalFormFr } : null,
+    legalFormNl ? { language: "nl", value: legalFormNl } : null,
+  ].filter(Boolean);
   const juridicalSituationXml = allTagBlocks(enterpriseXml, "JuridicalSituation")[0] || "";
   const statusXml = allTagBlocks(juridicalSituationXml, "Status")[0] || "";
   const status = pickDescriptionValue(statusXml, langue) || (String(langue || "fr").toLowerCase() === "nl" ? "Actief" : "Actif");
@@ -612,6 +666,7 @@ function parseBceEnterpriseResponse(xml, enterpriseNumber, langue) {
       ],
       enterprise: {
         legalForm,
+        legalFormDescriptions,
         startDate: periodBegin || null,
         vatLiable: null,
         legalSituation,
@@ -2019,16 +2074,15 @@ async function buildDossierDocument(documentKey, body) {
   const payment = body?.payment || {};
 
   const lang = companyData?.lang_entre || "fr";
+  const docLang = String(body?.file_language || lang).toLowerCase();
   const companyName =
     safeValue(companyData?.company_name, "") ||
-    safeValue(readDescriptionValue(companyData?.denomination?.[0]?.description, lang), "") ||
+    safeValue(readDescriptionValue(companyData?.denomination?.[0]?.description, docLang), "") ||
     "Non renseigne";
   const enterpriseNumber = safeValue(companyData?.number, "Non renseigne");
   const legalForm =
-    safeValue(companyData?.enterprise?.legalForm, "") ||
-    safeValue(companyData?.legalForm, "") ||
-    safeValue(companyData?.juridicalForm, "") ||
-    safeValue(companyData?.juridicalSituation?.legalForm, "") ||
+    readDescriptionValue(companyData?.enterprise?.legalFormDescriptions, docLang) ||
+    translateLegalForm(safeValue(companyData?.enterprise?.legalForm, "") || safeValue(companyData?.legalForm, "") || safeValue(companyData?.juridicalForm, "") || safeValue(companyData?.juridicalSituation?.legalForm, ""), docLang) ||
     "Non renseigne";
   const companyAddress =
     safeValue(companyData?.address, "") ||
