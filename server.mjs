@@ -1741,6 +1741,12 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   html = html.replaceAll("__ANNUAL_MEETING_MONTH__", he(data.annualMeetingMonth || ""));
   html = html.replaceAll("__DATE_CONSTITUTION__", he(formatDateFr(data.dateConstitution || "")));
   html = html.replaceAll("__ADDRESS__", he(data.companyAddress || ""));
+  html = html.replaceAll("__ADDR_STREET__", he(data.addrStreet || ""));
+  html = html.replaceAll("__ADDR_HOUSE_NUMBER__", he(data.addrHouseNumber || ""));
+  html = html.replaceAll("__ADDR_BOX__", he(data.addrBox || ""));
+  html = html.replaceAll("__ADDR_ZIPCODE__", he(data.addrZipcode || ""));
+  html = html.replaceAll("__ADDR_MUNICIPALITY__", he(data.addrMunicipality || ""));
+  html = html.replaceAll("__ADDR_COUNTRY__", he(data.addrCountry || "Belgique"));
   html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
   html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "")));
 
@@ -2018,7 +2024,12 @@ async function buildDossierDocument(documentKey, body) {
     safeValue(readDescriptionValue(companyData?.denomination?.[0]?.description, lang), "") ||
     "Non renseigne";
   const enterpriseNumber = safeValue(companyData?.number, "Non renseigne");
-  const legalForm = safeValue(companyData?.enterprise?.legalForm, "Non renseigne");
+  const legalForm =
+    safeValue(companyData?.enterprise?.legalForm, "") ||
+    safeValue(companyData?.legalForm, "") ||
+    safeValue(companyData?.juridicalForm, "") ||
+    safeValue(companyData?.juridicalSituation?.legalForm, "") ||
+    "Non renseigne";
   const companyAddress =
     safeValue(companyData?.address, "") ||
     safeValue(companyData?.addresses?.[0]?.full, "") ||
@@ -2167,6 +2178,12 @@ async function buildDossierDocument(documentKey, body) {
       companyName,
       legalForm,
       companyAddress,
+      addrStreet: String(companyData?.addresses?.[0]?.street || ""),
+      addrHouseNumber: String(companyData?.addresses?.[0]?.houseNumber || ""),
+      addrBox: String(companyData?.addresses?.[0]?.box || ""),
+      addrZipcode: String(companyData?.addresses?.[0]?.postalCode || ""),
+      addrMunicipality: String(companyData?.addresses?.[0]?.municipality || ""),
+      addrCountry: String(companyData?.addresses?.[0]?.country || "Belgique"),
       capitalCurrency: String(capital?.currency || "EUR"),
       capitalAmount: String(capital?.amount || ""),
       fiscalYearEndDay: String(financialData?.fiscalYearEndDay || ""),
