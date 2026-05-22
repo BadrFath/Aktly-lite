@@ -3,12 +3,60 @@ import { useEffect, useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
-const getDossierFiles = (uiLanguage) => [
+const form1DownloadBaseUrl = (
+  import.meta.env.VITE_LEGAKTE_FORMULAIRE1_DOWNLOAD_BASE_URL ??
+  'https://form.legakte.be/pdfs/formulaire1'
+).trim()
+const form1DemandeIdStorageKey = 'aktly_formulaire1_demande_id'
+
+const generateUuidFallback = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `demande-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+}
+
+const resolveDemandeId = (draft) => {
+  const rawValue =
+    draft?.depositaire?.dirigeant?.demandeId ??
+    draft?.depositaire?.dirigeant?.demande_id ??
+    draft?.depositaire?.dirigeant?.idDemande ??
+    draft?.depositaire?.dirigeant?.request_id ??
+    ''
+  const normalized = String(rawValue || '').trim()
+  if (!normalized || normalized.toLowerCase() === 'n/a') {
+    return ''
+  }
+  return normalized
+}
+
+const getOrCreateStoredForm1DemandeId = () => {
+  const existing = String(localStorage.getItem(form1DemandeIdStorageKey) || '').trim()
+  if (existing && existing.toLowerCase() !== 'n/a') {
+    return existing
+  }
+
+  const created = generateUuidFallback()
+  localStorage.setItem(form1DemandeIdStorageKey, created)
+  return created
+}
+
+const buildFormulaire1DownloadUrl = (draft, fallbackDemandeId = '') => {
+  const demandeId = resolveDemandeId(draft) || String(fallbackDemandeId || '').trim()
+  if (!form1DownloadBaseUrl || !demandeId) {
+    return ''
+  }
+  const separator = form1DownloadBaseUrl.includes('?') ? '&' : '?'
+  return `${form1DownloadBaseUrl}${separator}demande_id=${encodeURIComponent(demandeId)}&download=true`
+}
+
+const getDossierFiles = (uiLanguage, formulaire1DownloadUrl) => [
   {
     title: uiLanguage === 'nl' ? 'Formulier 1' : 'Formulaire 1',
     documentKey: 'formulaire1entr',
-    viewUrl: '/legakte-docs/formulaire1entr.pdf',
-    fallbackDownloadUrl: '/legakte-docs/formulaire1entr.pdf',
+    directDownloadUrl: formulaire1DownloadUrl,
+    viewUrl: formulaire1DownloadUrl || '/legakte-docs/formulaire1entr.pdf',
+    fallbackDownloadUrl: formulaire1DownloadUrl || '/legakte-docs/formulaire1entr.pdf',
   },
   {
     title: uiLanguage === 'nl' ? 'Formulier 2' : 'Formulaire 2',
@@ -85,7 +133,11 @@ const resolveCompanyDisplayName = (companyData) => {
 function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
   const navigate = useNavigate()
   const [draft, setDraft] = useState(() => readDossierSnapshot())
-  const dossierFiles = useMemo(() => getDossierFiles(uiLanguage), [uiLanguage])
+  const [generatedForm1DemandeId] = useState(() => getOrCreateStoredForm1DemandeId())
+  const dossierFiles = useMemo(
+    () => getDossierFiles(uiLanguage, buildFormulaire1DownloadUrl(draft, generatedForm1DemandeId)),
+    [uiLanguage, draft, generatedForm1DemandeId],
+  )
   const t = uiLanguage === 'nl'
     ? {
         pageTag: 'Pagina 5 - Betaling + Handtekening + Dossier',
@@ -187,6 +239,13 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     }
   }, [])
 
+  useEffect(() => {
+    const realDemandeId = resolveDemandeId(draft)
+    if (realDemandeId) {
+      localStorage.setItem(form1DemandeIdStorageKey, realDemandeId)
+    }
+  }, [draft])
+
   const onPrintDossier = () => {
     window.print()
   }
@@ -238,6 +297,12 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     setDownloadError('')
     setViewingKey(file.documentKey)
 
+    if (file.directDownloadUrl) {
+      window.open(file.directDownloadUrl, '_blank', 'noopener,noreferrer')
+      setViewingKey('')
+      return
+    }
+
     // Open immediately to reduce popup blocker risk, then navigate when content is ready.
     const previewWindow = window.open('', '_blank')
 
@@ -277,6 +342,12 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
   const onDownloadGeneratedDocument = async (file) => {
     setDownloadError('')
     setDownloadingKey(file.documentKey)
+
+    if (file.directDownloadUrl) {
+      triggerStaticDownload(file.directDownloadUrl)
+      setDownloadingKey('')
+      return
+    }
 
     try {
       const { blob, fileName } = await requestGeneratedDocumentBlob(file)
