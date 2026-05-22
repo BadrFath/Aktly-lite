@@ -1807,14 +1807,16 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
 
   const users = data.users || [];
   const assembleeDateStr = he(formatDateFr(data.dateAssemblee || ""));
-  const checkboxHtml = 'C <span class="xmark" style="left:-38px;">&#x2716;</span>';
+  const checkboxCHtml = 'C <span class="xmark" style="left:-38px;">&#x2716;</span>';
+  const checkboxNHtml = 'N <span class="xmark" style="left:-38px;">&#x2716;</span>';
   for (let i = 1; i <= 5; i++) {
     const u = users[i - 1] || {};
     html = html.replaceAll(`__USER_${i}_NAME__`, he(u.name || ""));
     html = html.replaceAll(`__USER_${i}_ID__`, he(u.idNumber || ""));
     html = html.replaceAll(`__USER_${i}_FUNCTION__`, he(u.function || ""));
     html = html.replaceAll(`__USER_${i}_DATE__`, u.name ? assembleeDateStr : "");
-    html = html.replaceAll(`__USER_${i}_CHECKBOX__`, u.name ? checkboxHtml : "");
+    html = html.replaceAll(`__USER_${i}_CHECKBOX__`, u.name ? checkboxCHtml : "");
+    html = html.replaceAll(`__USER_${i}_NCHECKBOX__`, u.name ? checkboxNHtml : "");
   }
 
   // Replace signatory pattern "__TOKEN__ __TOKEN__ agissant" with the depositaire name
