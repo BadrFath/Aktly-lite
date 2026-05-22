@@ -3,6 +3,45 @@ import { useMemo, useState } from 'react'
 import { cardReveal, pageContainer } from '../lib/motionPresets'
 import { useNavigate } from 'react-router-dom'
 
+const LEGAL_FORM_NL_TO_FR = {
+  'Besloten Vennootschap': 'Société à responsabilité limitée',
+  'BV': 'SRL',
+  'BVBA': 'SPRL',
+  'Besloten Vennootschap met Beperkte Aansprakelijkheid': 'Société Privée à Responsabilité Limitée',
+  'Naamloze Vennootschap': 'Société Anonyme',
+  'NV': 'SA',
+  'Gewone commanditaire vennootschap': 'Société en commandite simple',
+  'CommV': 'SComm',
+  'Commanditaire vennootschap op aandelen': 'Société en commandite par actions',
+  'CVA': 'SCA',
+  'Vennootschap onder firma': 'Société en nom collectif',
+  'VOF': 'SNC',
+  'Coöperatieve vennootschap': 'Société coopérative',
+  'CV': 'SC',
+  'Vereniging zonder winstoogmerk': 'Association sans but lucratif',
+  'VZW': 'ASBL',
+  'Internationale vereniging zonder winstoogmerk': 'Association internationale sans but lucratif',
+  'IVZW': 'AISBL',
+  'Stichting': 'Fondation',
+  'Private stichting': 'Fondation privée',
+  'Maatschap': 'Société de droit commun',
+  'Eenmanszaak': 'Entreprise individuelle',
+  'Landbouwvennootschap': 'Société agricole',
+  'Economisch samenwerkingsverband': "Groupement d'intérêt économique",
+  'ESV': 'GIE',
+  'Europese vennootschap': 'Société européenne',
+}
+const LEGAL_FORM_FR_TO_NL = Object.fromEntries(
+  Object.entries(LEGAL_FORM_NL_TO_FR).map(([nl, fr]) => [fr, nl])
+)
+
+function translateLegalForm(legalForm, targetLang) {
+  if (!legalForm) return legalForm
+  if (targetLang === 'fr') return LEGAL_FORM_NL_TO_FR[legalForm] || legalForm
+  if (targetLang === 'nl') return LEGAL_FORM_FR_TO_NL[legalForm] || legalForm
+  return legalForm
+}
+
 function AddressInfoPage({ uiLanguage = 'fr' }) {
   const navigate = useNavigate()
   const companyData = useMemo(() => {
@@ -11,6 +50,10 @@ function AddressInfoPage({ uiLanguage = 'fr' }) {
   }, [])
 
   const currentAddress = companyData?.addresses?.[0] ?? {}
+
+  const [docLang, setDocLang] = useState(
+    localStorage.getItem('aktly_documents_lang') || 'fr'
+  )
 
   const [form, setForm] = useState({
     rue: currentAddress?.street ?? '',
@@ -47,6 +90,8 @@ function AddressInfoPage({ uiLanguage = 'fr' }) {
         legalForm: 'Rechtsvorm',
         notLoaded: 'Onderneming niet geladen',
         source: 'Referentiebron stap 5',
+        docLangTitle: 'Taal van de gegenereerde documenten',
+        docLangDesc: 'Kies de taal waarmee de formulieren worden aangemaakt.',
       }
     : {
         pageTag: 'Page 4 - Nouvelles adresses + informations',
@@ -63,14 +108,16 @@ function AddressInfoPage({ uiLanguage = 'fr' }) {
         prev: 'Precedent',
         next: 'Suivant',
         saved: 'Etape 5 enregistree avec succes.',
-        currentInfo: 'Informations entreprise courantes',
-        currentInfoDesc: 'Affichage de rappel des donnees entreprise recuperees precedemment.',
-        name: 'Nom',
-        enterpriseNumber: 'Numero',
-        address: 'Adresse',
+        currentInfo: 'Informations entreprise pre-remplies',
+        currentInfoDesc: 'Rappel des donnees entreprise recuperees precedemment.',
+        name: 'Entreprise',
+        enterpriseNumber: 'Numero BCE',
+        address: 'Adresse BCE',
         legalForm: 'Forme juridique',
         notLoaded: 'Entreprise non chargee',
         source: 'Source de reference etape 5',
+        docLangTitle: 'Langue de generation des fichiers',
+        docLangDesc: 'Choisissez la langue dans laquelle les formulaires seront generes.',
       }
 
   const onChange = (event) => {
@@ -84,10 +131,16 @@ function AddressInfoPage({ uiLanguage = 'fr' }) {
     }))
   }
 
+  const onDocLangChange = (lang) => {
+    setDocLang(lang)
+    localStorage.setItem('aktly_documents_lang', lang)
+  }
+
   const onSubmit = (event) => {
     event.preventDefault()
 
     localStorage.setItem('aktly_step_5', 'done')
+    localStorage.setItem('aktly_documents_lang', docLang)
     localStorage.setItem(
       'aktly_address_info',
       JSON.stringify({
@@ -257,7 +310,36 @@ function AddressInfoPage({ uiLanguage = 'fr' }) {
           </p>
           <p>{t.enterpriseNumber}: {companyData?.number ?? '-'}</p>
           <p>{t.address}: {companyData?.address ?? '-'}</p>
-          <p>{t.legalForm}: {companyData?.enterprise?.legalForm ?? '-'}</p>
+          <p>{t.legalForm}: {translateLegalForm(companyData?.enterprise?.legalForm ?? '-', docLang)}</p>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-indigo-400/30 bg-indigo-950/30 p-4">
+          <p className="text-sm font-semibold text-indigo-200">{t.docLangTitle}</p>
+          <p className="mt-1 text-xs text-slate-400">{t.docLangDesc}</p>
+          <div className="mt-3 flex gap-3">
+            <button
+              type="button"
+              onClick={() => onDocLangChange('fr')}
+              className={`flex-1 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                docLang === 'fr'
+                  ? 'border-indigo-400 bg-indigo-400 text-slate-950'
+                  : 'border-slate-600 bg-slate-950 text-slate-300 hover:border-indigo-400'
+              }`}
+            >
+              🇫🇷 Français
+            </button>
+            <button
+              type="button"
+              onClick={() => onDocLangChange('nl')}
+              className={`flex-1 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                docLang === 'nl'
+                  ? 'border-indigo-400 bg-indigo-400 text-slate-950'
+                  : 'border-slate-600 bg-slate-950 text-slate-300 hover:border-indigo-400'
+              }`}
+            >
+              🇧🇪 Nederlands
+            </button>
+          </div>
         </div>
         <p className="mt-3 text-xs text-slate-400">
           {t.source}: E:\Mohammed el yakoubi\Legakte
