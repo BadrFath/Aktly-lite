@@ -237,7 +237,7 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     document.body.removeChild(link)
   }
 
-  const requestGeneratedDocumentBlob = async (file) => {
+  const requestGeneratedDocumentBlob = async (file, extraBody = {}) => {
     const latestDraft = readDossierSnapshot()
     setDraft(latestDraft)
 
@@ -256,6 +256,11 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         user: latestDraft.user ?? {},
         payment: latestDraft.payment ?? {},
         file_language: latestDraft.documentsLang,
+        pub_text: latestDraft.pubText ?? null,
+        cession_parts_service: latestDraft.cessionPartsService ?? false,
+        address_service: latestDraft.addressService ?? false,
+        dirigeants_service: latestDraft.dirigeantsService ?? false,
+        ...extraBody,
       }),
     })
 
@@ -289,7 +294,12 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
       const mime = String(blob?.type || '').toLowerCase()
 
       if (previewWindow) {
-        if (mime.includes('text/plain') || !mime) {
+        if (mime.includes('text/html')) {
+          const htmlContent = await blob.text()
+          previewWindow.document.open()
+          previewWindow.document.write(htmlContent)
+          previewWindow.document.close()
+        } else if (mime.includes('text/plain') || !mime) {
           const textContent = await blob.text()
           const safeTitle = escapeHtml(fileName)
           const safeBody = escapeHtml(textContent)
@@ -328,16 +338,28 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     }
 
     try {
-      const { blob, fileName } = await requestGeneratedDocumentBlob(file)
-      const blobUrl = URL.createObjectURL(blob)
+      const { blob, fileName } = await requestGeneratedDocumentBlob(file, { autoprint: true })
+      const mime = String(blob?.type || '').toLowerCase()
 
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(blobUrl)
+      if (mime.includes('text/html')) {
+        // For HTML documents: open in new window so user can print-to-PDF
+        const htmlContent = await blob.text()
+        const printWindow = window.open('', '_blank')
+        if (printWindow) {
+          printWindow.document.open()
+          printWindow.document.write(htmlContent)
+          printWindow.document.close()
+        }
+      } else {
+        const blobUrl = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(blobUrl)
+      }
     } catch {
       setDownloadError(
         t.generationFallback,

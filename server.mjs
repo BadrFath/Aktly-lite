@@ -1503,6 +1503,78 @@ async function resolveTemplateFilePath(fileName) {
   return "";
 }
 
+async function resolveHtmlTemplatePath(fileName) {
+  const candidates = [
+    path.join(distDir, "style3", fileName),
+    path.resolve("frontend", "public", "style3", fileName),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // Keep trying.
+    }
+  }
+
+  return "";
+}
+
+async function buildFormulaire1HtmlPage(data, autoprint = false) {
+  const templatePath = await resolveHtmlTemplatePath("formulaire1-template.html");
+  if (!templatePath) {
+    throw new Error("Template formulaire1-template.html introuvable");
+  }
+
+  let html = await fs.readFile(templatePath, "utf-8");
+
+  // Format enterprise number: 9 digits → prepend leading 0
+  const rawNumber = String(data.enterpriseNumber || "");
+  const digits = rawNumber.replace(/\D/g, "");
+  const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
+
+  // Build action phrase from active services
+  const actions = [];
+  if (data.services?.cessionParts) actions.push("cession de parts");
+  if (data.services?.addressChange) actions.push("transfert de siège social");
+  if (data.services?.dirigeants) {
+    actions.push("démission administrateur");
+    actions.push("nomination d'administrateur");
+  }
+  let phrase = "";
+  if (actions.length > 0) {
+    const last = actions.length > 1 ? actions.pop() : "";
+    phrase = actions.join(", ") + (last ? " et " + last : "");
+    phrase = phrase.charAt(0).toUpperCase() + phrase.slice(1);
+  }
+
+  const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber));
+  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName));
+  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm));
+  html = html.replaceAll("__ADDR_STREET__", he(data.address?.street));
+  html = html.replaceAll("__ADDR_HOUSE_NUMBER__", he(data.address?.houseNumber));
+  html = html.replaceAll("__ADDR_BOX__", he(data.address?.box));
+  html = html.replaceAll("__ADDR_ZIPCODE__", he(data.address?.postalCode));
+  html = html.replaceAll("__ADDR_MUNICIPALITY__", he(data.address?.municipality));
+  html = html.replaceAll("__ADDR_COUNTRY__", he(data.address?.country || "Belgique"));
+  html = html.replaceAll("__PHRASE__", phrase); // raw – may contain <br>
+  html = html.replaceAll("__PUB_TEXT_PART1__", data.pubText?.part1 || "");
+  html = html.replaceAll("__PUB_TEXT_PART2__", data.pubText?.part2 || "");
+  html = html.replaceAll("__USER_FIRST_NAME__", he(data.userFirstName));
+  html = html.replaceAll("__USER_LAST_NAME__", he(data.userLastName));
+  html = html.replaceAll("__FAIT_A__", he(data.faitA));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(data.dateAssemblee));
+
+  if (autoprint) {
+    html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
+  }
+
+  return html;
+}
+
 function drawWrappedOnPage(page, font, text, x, y, fontSize, maxWidth, maxLines = 2) {
   const safeText = String(text || "").trim();
   if (!safeText) {
@@ -1754,6 +1826,57 @@ async function buildDossierDocument(documentKey, body) {
     "attestation-identite": `${header}ATTESTATION D'IDENTITE - MODELE 1\n\n${common}`,
     "pv-assemblee-generale": `${header}PROCES-VERBAL DE L'ASSEMBLEE GENERALE\n\n${common}Resolution\nL'assemblee generale de ${companyName} decide de transferer le siege social a ${newAddress}.\nLa decision prend effet a la date du ${changeDate}.\n`,
   };
+
+  if (documentKey === "formulaire1entr") {
+    const address = companyData?.addresses?.[0] || {};
+    const pubText = body?.pub_text || null;
+    let normalizedPubText = {};
+    if (typeof pubText === "string" && pubText.trim()) {
+      normalizedPubText = { part1: pubText };
+    } else if (pubText && typeof pubText === "object") {
+      for (const key of ["part1", "part2", "part3", "part4"]) {
+        if (pubText[key]) normalizedPubText[key] = String(pubText[key]);
+      }
+      if (Object.keys(normalizedPubText).length === 0 && Object.keys(pubText).length > 0) {
+        normalizedPubText.part1 = Object.values(pubText).filter(Boolean).join(" ");
+      }
+    }
+
+    const services = {
+      cessionParts: Boolean(body?.cession_parts_service),
+      addressChange: Boolean(body?.address_service),
+      dirigeants: Boolean(body?.dirigeants_service),
+    };
+
+    const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
+
+    const htmlContent = await buildFormulaire1HtmlPage({
+      enterpriseNumber,
+      companyName,
+      legalForm,
+      address: {
+        street: address.street || "",
+        houseNumber: address.houseNumber || "",
+        box: address.box || "",
+        postalCode: address.postalCode || "",
+        municipality: address.municipality || "",
+        country: address.country || "Belgique",
+      },
+      pubText: normalizedPubText,
+      services,
+      userFirstName: String(depositaire?.dirigeant?.given_name || user?.given_name || "").trim(),
+      userLastName: String(depositaire?.dirigeant?.nom || user?.nom || user?.name || "").trim(),
+      faitA: String(addressInfo?.commune || "").trim(),
+      dateAssemblee: changeDate || agDate || "",
+      autoprint,
+    });
+
+    return {
+      fileName: `formulaire1entr-${fileTimestamp}.html`,
+      mimeType: "text/html; charset=utf-8",
+      content: Buffer.from(htmlContent, "utf-8"),
+    };
+  }
 
   if (dossierPdfTemplates[documentKey]) {
     const pdfBuffer = await createTemplateOverlayPdf(dossierPdfTemplates[documentKey], documentKey, {
