@@ -2284,16 +2284,40 @@ async function buildDossierDocument(documentKey, body) {
   if (documentKey === "attestation-identite") {
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
     const person = depositaire?.dirigeant || {};
+    const normalizedFirstName = String(
+      person?.givenName ||
+      person?.given_name ||
+      person?.prenom ||
+      person?.firstName ||
+      user?.given_name ||
+      "",
+    ).trim();
+    const normalizedLastName = String(
+      person?.surname ||
+      person?.lastName ||
+      person?.nom ||
+      person?.family_name ||
+      person?.last_name ||
+      user?.nom ||
+      "",
+    ).trim();
+    const nameParts = String(depositaireName || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    const fallbackFirstName = nameParts[0] || "";
+    const fallbackLastName = nameParts.slice(1).join(" ");
+
     const htmlContent = await buildAttestation1HtmlPage({
       enterpriseNumber,
       companyName,
       legalForm,
-      firstName: String(person?.given_name || person?.prenom || user?.given_name || "").trim(),
-      lastName: String(person?.nom || person?.family_name || user?.nom || "").trim(),
-      dateOfBirth: String(person?.date_naissance || person?.birth_date || "").trim(),
-      placeOfBirth: String(person?.lieu_naissance || person?.birth_place || "").trim(),
-      nationalId: String(person?.national_id || person?.id_number || "").trim(),
-      addressFull: String(person?.adresse || person?.address || companyAddress || "").trim(),
+      firstName: normalizedFirstName || fallbackFirstName,
+      lastName: normalizedLastName || fallbackLastName,
+      dateOfBirth: String(person?.dateOfBirth || person?.date_naissance || person?.birthDate || person?.birth_date || "").trim(),
+      placeOfBirth: String(person?.placeOfBirth || person?.lieu_naissance || person?.birthPlace || person?.birth_place || "").trim(),
+      nationalId: String(person?.nationalId || person?.national_id || person?.idNumber || person?.id_number || person?.nn || "").trim(),
+      addressFull: String(person?.addressFull || person?.adresse || person?.address || companyAddress || "").trim(),
       depositaireFunction,
       faitA: newCity || String(addressInfo?.commune || "").trim(),
       dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
