@@ -497,15 +497,15 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
               >
                 <p className="mb-4 text-xl font-medium text-slate-800">{file.title}</p>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onViewGeneratedDocument(file)}
-                    disabled={viewingKey === file.documentKey || downloadingKey === file.documentKey}
+                  <a
+                    href={file.viewUrl}
+                    target="_blank"
+                    rel="noreferrer"
                     className="wow-btn inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700"
                   >
                     <span aria-hidden="true">◉</span>
-                    {viewingKey === file.documentKey ? t.opening : t.view}
-                  </button>
+                    {t.view}
+                  </a>
                   <button
                     type="button"
                     onClick={() => onDownloadGeneratedDocument(file)}
