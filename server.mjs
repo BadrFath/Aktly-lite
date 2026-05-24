@@ -1705,11 +1705,22 @@ function generatePubTextHtml(data) {
 }
 
 async function buildFormulaire1HtmlPage(data, autoprint = false) {
-  const templatePath = await resolveHtmlTemplatePath("style3", "formulaire1-template.html");
+
+  // Language-aware template selection
+  let templatePath;
+  if (data.langue === "nl") {
+    templatePath = path.resolve("templates-nl", "formulier1-template.html");
+    try {
+      await fs.access(templatePath);
+    } catch {
+      templatePath = await resolveHtmlTemplatePath("style3", "formulaire1-template.html");
+    }
+  } else {
+    templatePath = await resolveHtmlTemplatePath("style3", "formulaire1-template.html");
+  }
   if (!templatePath) {
     throw new Error("Template formulaire1-template.html introuvable");
   }
-
   let html = await fs.readFile(templatePath, "utf-8");
 
   // Format enterprise number: 9 digits → prepend leading 0
@@ -1841,15 +1852,26 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
 }
 
 async function buildAttestation1HtmlPage(data, autoprint = false) {
-  const templatePath = await resolveHtmlTemplatePath("style1", "attestation1-template.html");
+  // Language-aware template selection
+  let templatePath;
+  if (data.langue === "nl") {
+    templatePath = path.resolve("templates-nl", "attestation1-template.html");
+    try {
+      await fs.access(templatePath);
+    } catch {
+      templatePath = await resolveHtmlTemplatePath("style1", "attestation1-template.html");
+    }
+  } else {
+    templatePath = await resolveHtmlTemplatePath("style1", "attestation1-template.html");
+  }
   if (!templatePath) throw new Error("Template attestation1-template.html introuvable");
-
   let html = await fs.readFile(templatePath, "utf-8");
   const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   const rawNumber = String(data.enterpriseNumber || "");
   const digits = rawNumber.replace(/\D/g, "");
   const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
+
 
   html = html.replaceAll("__FIRST_NAME__", he(data.firstName || "Non renseigné"));
   html = html.replaceAll("__LAST_NAME__", he(data.lastName || "Non renseigné"));
@@ -1864,7 +1886,12 @@ async function buildAttestation1HtmlPage(data, autoprint = false) {
   html = html.replaceAll("__FAIT_A__", he(data.faitA || "Non renseigné"));
   html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "Non renseigné")));
 
-  // Remplacer tous les __TOKEN__ restants par "Non renseigné"
+  // Remplacement spécifique pour le numéro de téléphone (premier __TOKEN__ du template)
+  // On suppose que data.phone contient le numéro GSM Veriff
+  let phoneValue = he(data.phone || data.gsm || "Non renseigné");
+  html = html.replace(/__TOKEN__/, phoneValue);
+
+  // Remplacer tous les autres __TOKEN__ restants par "Non renseigné"
   html = html.replaceAll("__TOKEN__", "Non renseigné");
 
   if (autoprint) {
