@@ -40,7 +40,6 @@ const getDossierFiles = (uiLanguage, formulaire1DownloadUrl) => [
   {
     title: uiLanguage === 'nl' ? 'Formulier 1' : 'Formulaire 1',
     documentKey: 'formulaire1entr',
-    directDownloadUrl: formulaire1DownloadUrl,
     viewUrl: formulaire1DownloadUrl || '/legakte-docs/formulaire1entr.pdf',
     fallbackDownloadUrl: formulaire1DownloadUrl || '/legakte-docs/formulaire1entr.pdf',
   },
@@ -296,12 +295,6 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     setDownloadError('')
     setViewingKey(file.documentKey)
 
-    if (file.directDownloadUrl) {
-      window.open(file.directDownloadUrl, '_blank', 'noopener,noreferrer')
-      setViewingKey('')
-      return
-    }
-
     // Open immediately to reduce popup blocker risk, then navigate when content is ready.
     const previewWindow = window.open('', '_blank')
 
@@ -357,12 +350,6 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
   const onDownloadGeneratedDocument = async (file) => {
     setDownloadError('')
     setDownloadingKey(file.documentKey)
-
-    if (file.directDownloadUrl) {
-      triggerStaticDownload(file.directDownloadUrl)
-      setDownloadingKey('')
-      return
-    }
 
     try {
       const { blob, fileName } = await requestGeneratedDocumentBlob(file, { autoprint: true })
