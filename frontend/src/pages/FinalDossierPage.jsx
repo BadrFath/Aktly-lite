@@ -339,13 +339,15 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
       if (error instanceof Error && error.message === 'UNRESOLVED_TEMPLATE_PLACEHOLDER') {
         setDownloadError(
           uiLanguage === 'nl'
-            ? 'Het gegenereerde document bevat nog placeholders (_TOKEN_, __...__). Generatie geannuleerd.'
-            : 'Le document genere contient encore des placeholders (_TOKEN_, __...). Generation annulee.',
+            ? 'Het gegenereerde document bevat nog placeholders (_TOKEN_, __...). Weergave via statisch bestand.'
+            : 'Le document genere contient encore des placeholders (_TOKEN_, __...). Ouverture via fichier statique.',
         )
       } else {
         setDownloadError(t.generationFallback)
-        window.open(file.viewUrl, '_blank', 'noopener,noreferrer')
       }
+
+      // Keep the view action working even when server generation is invalid/unavailable.
+      window.open(file.viewUrl, '_blank', 'noopener,noreferrer')
     } finally {
       setViewingKey('')
     }
