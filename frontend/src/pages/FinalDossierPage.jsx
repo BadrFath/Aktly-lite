@@ -196,7 +196,7 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         filesSource: 'Source fichiers utilises',
       }
 
-  const { isPaymentVerified, payment, user, addressInfo, depositaire, companyData, documentsLang } = draft
+  const { isPaymentVerified, payment, user, addressInfo, companyData } = draft
 
   const [downloadError, setDownloadError] = useState('')
   const [downloadingKey, setDownloadingKey] = useState('')
@@ -497,15 +497,15 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
               >
                 <p className="mb-4 text-xl font-medium text-slate-800">{file.title}</p>
                 <div className="flex flex-wrap gap-2">
-                  <a
-                    href={file.viewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="wow-btn inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700"
+                  <button
+                    type="button"
+                    onClick={() => onViewGeneratedDocument(file)}
+                    disabled={viewingKey === file.documentKey || downloadingKey === file.documentKey}
+                    className="wow-btn inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span aria-hidden="true">◉</span>
-                    {t.view}
-                  </a>
+                    {viewingKey === file.documentKey ? t.opening : t.view}
+                  </button>
                   <button
                     type="button"
                     onClick={() => onDownloadGeneratedDocument(file)}
