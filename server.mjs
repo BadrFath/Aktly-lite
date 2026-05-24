@@ -1851,18 +1851,21 @@ async function buildAttestation1HtmlPage(data, autoprint = false) {
   const digits = rawNumber.replace(/\D/g, "");
   const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
 
-  html = html.replaceAll("__FIRST_NAME__", he(data.firstName || ""));
-  html = html.replaceAll("__LAST_NAME__", he(data.lastName || ""));
-  html = html.replaceAll("__DATE_OF_BIRTH__", he(data.dateOfBirth || ""));
-  html = html.replaceAll("__PLACE_OF_BIRTH__", he(data.placeOfBirth || ""));
-  html = html.replaceAll("__NATIONAL_ID__", he(data.nationalId || ""));
-  html = html.replaceAll("__ADDRESS_FULL__", he(data.addressFull || ""));
-  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName || ""));
-  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber));
-  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm || ""));
-  html = html.replaceAll("__FUNCTION__", he(data.depositaireFunction || ""));
-  html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
-  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "")));
+  html = html.replaceAll("__FIRST_NAME__", he(data.firstName || "Non renseigné"));
+  html = html.replaceAll("__LAST_NAME__", he(data.lastName || "Non renseigné"));
+  html = html.replaceAll("__DATE_OF_BIRTH__", he(data.dateOfBirth || "Non renseigné"));
+  html = html.replaceAll("__PLACE_OF_BIRTH__", he(data.placeOfBirth || "Non renseigné"));
+  html = html.replaceAll("__NATIONAL_ID__", he(data.nationalId || "Non renseigné"));
+  html = html.replaceAll("__ADDRESS_FULL__", he(data.addressFull || "Non renseigné"));
+  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName || "Non renseigné"));
+  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber || "Non renseigné"));
+  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm || "Non renseigné"));
+  html = html.replaceAll("__FUNCTION__", he(data.depositaireFunction || "Non renseigné"));
+  html = html.replaceAll("__FAIT_A__", he(data.faitA || "Non renseigné"));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "Non renseigné")));
+
+  // Remplacer tous les __TOKEN__ restants par "Non renseigné"
+  html = html.replaceAll("__TOKEN__", "Non renseigné");
 
   if (autoprint) {
     html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
