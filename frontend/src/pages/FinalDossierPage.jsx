@@ -70,6 +70,9 @@ const dossierGenerateBaseEndpoint =
 
 const bearerToken = import.meta.env.VITE_LEGAKTE_BEARER_TOKEN ?? ''
 
+const containsTemplatePlaceholder = (content) =>
+  /__[^_\s][A-Z0-9_]*__|_TOKEN_/i.test(String(content || ''))
+
 const readJsonFromStorage = (key, fallback = null) => {
   try {
     const raw = localStorage.getItem(key)
@@ -269,6 +272,19 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
     }
 
     const blob = await response.blob()
+    const mime = String(blob?.type || '').toLowerCase()
+    if (mime.includes('text/plain') || mime.includes('text/html')) {
+      const content = await blob.text()
+      if (containsTemplatePlaceholder(content)) {
+        throw new Error('UNRESOLVED_TEMPLATE_PLACEHOLDER')
+      }
+      return {
+        blob: new Blob([content], {
+          type: mime.includes('text/html') ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8',
+        }),
+        fileName: `${file.documentKey}.txt`,
+      }
+    }
     const disposition = response.headers.get('content-disposition') || ''
     const matchedFileName = disposition.match(/filename="?([^";]+)"?/i)
     const fileName = matchedFileName?.[1] || `${file.documentKey}.pdf`
@@ -316,12 +332,20 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         window.open(blobUrl, '_blank')
         window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
       }
-    } catch {
+    } catch (error) {
       if (previewWindow) {
         previewWindow.close()
       }
-      setDownloadError(t.generationFallback)
-      window.open(file.viewUrl, '_blank', 'noopener,noreferrer')
+      if (error instanceof Error && error.message === 'UNRESOLVED_TEMPLATE_PLACEHOLDER') {
+        setDownloadError(
+          uiLanguage === 'nl'
+            ? 'Het gegenereerde document bevat nog placeholders (_TOKEN_, __...__). Generatie geannuleerd.'
+            : 'Le document genere contient encore des placeholders (_TOKEN_, __...). Generation annulee.',
+        )
+      } else {
+        setDownloadError(t.generationFallback)
+        window.open(file.viewUrl, '_blank', 'noopener,noreferrer')
+      }
     } finally {
       setViewingKey('')
     }
@@ -360,11 +384,19 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         document.body.removeChild(link)
         URL.revokeObjectURL(blobUrl)
       }
-    } catch {
-      setDownloadError(
-        t.generationFallback,
-      )
-      triggerStaticDownload(file.fallbackDownloadUrl)
+    } catch (error) {
+      if (error instanceof Error && error.message === 'UNRESOLVED_TEMPLATE_PLACEHOLDER') {
+        setDownloadError(
+          uiLanguage === 'nl'
+            ? 'Het gegenereerde document bevat nog placeholders (_TOKEN_, __...__). Download geannuleerd.'
+            : 'Le document genere contient encore des placeholders (_TOKEN_, __...). Telechargement annule.',
+        )
+      } else {
+        setDownloadError(
+          t.generationFallback,
+        )
+        triggerStaticDownload(file.fallbackDownloadUrl)
+      }
     } finally {
       setDownloadingKey('')
     }
@@ -459,7 +491,7 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
             {dossierFiles.map((file) => (
               <article
                 key={file.title}
-                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-2xl border border-slate-200 bg-slate-100 p-4 shadow-sm"
               >
                 <p className="mb-4 text-xl font-medium text-slate-800">{file.title}</p>
                 <div className="flex flex-wrap gap-2">
