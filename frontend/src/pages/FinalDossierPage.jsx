@@ -333,9 +333,6 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
         window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
       }
     } catch (error) {
-      if (previewWindow) {
-        previewWindow.close()
-      }
       if (error instanceof Error && error.message === 'UNRESOLVED_TEMPLATE_PLACEHOLDER') {
         setDownloadError(
           uiLanguage === 'nl'
@@ -347,7 +344,11 @@ function FinalDossierPage({ privilegedAccess = false, uiLanguage = 'fr' }) {
       }
 
       // Keep the view action working even when server generation is invalid/unavailable.
-      window.open(file.viewUrl, '_blank', 'noopener,noreferrer')
+      if (previewWindow) {
+        previewWindow.location.href = file.viewUrl
+      } else {
+        window.open(file.viewUrl, '_blank', 'noopener,noreferrer')
+      }
     } finally {
       setViewingKey('')
     }
