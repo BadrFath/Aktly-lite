@@ -2283,44 +2283,67 @@ async function buildDossierDocument(documentKey, body) {
 
   if (documentKey === "attestation-identite") {
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
+    // Utiliser la même logique de fallback que les autres documents
+    const lang = companyData?.lang_entre || "fr";
+    const docLang = String(body?.file_language || lang).toLowerCase();
+    const normalizedCompanyName =
+      safeValue(companyData?.company_name, "") ||
+      safeValue(readDescriptionValue(companyData?.denomination?.[0]?.description, docLang), "") ||
+      "Non renseigne";
+    const normalizedEnterpriseNumber = safeValue(companyData?.number, "Non renseigne");
+    const normalizedLegalForm =
+      readDescriptionValue(companyData?.enterprise?.legalFormDescriptions, docLang) ||
+      translateLegalForm(safeValue(companyData?.enterprise?.legalForm, "") || safeValue(companyData?.legalForm, "") || safeValue(companyData?.juridicalForm, "") || safeValue(companyData?.juridicalSituation?.legalForm, ""), docLang) ||
+      "Non renseigne";
+    const normalizedCompanyAddress =
+      safeValue(companyData?.address, "") ||
+      safeValue(companyData?.addresses?.[0]?.full, "") ||
+      "Non renseignee";
+    const normalizedDepositaireName = pickDepositaireName(depositaire);
+    const normalizedDepositaireFunction = safeValue(
+      depositaire?.dirigeant?.function || depositaire?.dirigeant?.role || depositaire?.role,
+      "Non renseignee",
+    );
     const person = depositaire?.dirigeant || {};
-    const normalizedFirstName = String(
-      person?.givenName ||
-      person?.given_name ||
-      person?.prenom ||
-      person?.firstName ||
-      user?.given_name ||
-      "",
-    ).trim();
-    const normalizedLastName = String(
-      person?.surname ||
-      person?.lastName ||
-      person?.nom ||
-      person?.family_name ||
-      person?.last_name ||
-      user?.nom ||
-      "",
-    ).trim();
-    const nameParts = String(depositaireName || "")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    const fallbackFirstName = nameParts[0] || "";
-    const fallbackLastName = nameParts.slice(1).join(" ");
+    // Prénom/Nom robustes
+    const normalizedFirstName = safeValue(
+      person?.givenName || person?.given_name || person?.prenom || person?.firstName || user?.given_name,
+      normalizedDepositaireName.split(" ")[0] || ""
+    );
+    const normalizedLastName = safeValue(
+      person?.surname || person?.lastName || person?.nom || person?.family_name || person?.last_name || user?.nom,
+      normalizedDepositaireName.split(" ").slice(1).join(" ") || ""
+    );
+    // Champs robustes pour date/lieu naissance, id, adresse
+    const normalizedDateOfBirth = safeValue(
+      person?.dateOfBirth || person?.date_naissance || person?.birthDate || person?.birth_date
+    );
+    const normalizedPlaceOfBirth = safeValue(
+      person?.placeOfBirth || person?.lieu_naissance || person?.birthPlace || person?.birth_place
+    );
+    const normalizedNationalId = safeValue(
+      person?.nationalId || person?.national_id || person?.idNumber || person?.id_number || person?.nn
+    );
+    const normalizedAddressFull = safeValue(
+      person?.addressFull || person?.adresse || person?.address,
+      normalizedCompanyAddress
+    );
+    const faitAValue = newCity || String(addressInfo?.commune || "").trim();
+    const dateAssembleeValue = agDate !== "Non renseignee" ? agDate : changeDate;
 
     const htmlContent = await buildAttestation1HtmlPage({
-      enterpriseNumber,
-      companyName,
-      legalForm,
-      firstName: normalizedFirstName || fallbackFirstName,
-      lastName: normalizedLastName || fallbackLastName,
-      dateOfBirth: String(person?.dateOfBirth || person?.date_naissance || person?.birthDate || person?.birth_date || "").trim(),
-      placeOfBirth: String(person?.placeOfBirth || person?.lieu_naissance || person?.birthPlace || person?.birth_place || "").trim(),
-      nationalId: String(person?.nationalId || person?.national_id || person?.idNumber || person?.id_number || person?.nn || "").trim(),
-      addressFull: String(person?.addressFull || person?.adresse || person?.address || companyAddress || "").trim(),
-      depositaireFunction,
-      faitA: newCity || String(addressInfo?.commune || "").trim(),
-      dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
+      enterpriseNumber: normalizedEnterpriseNumber,
+      companyName: normalizedCompanyName,
+      legalForm: normalizedLegalForm,
+      firstName: normalizedFirstName,
+      lastName: normalizedLastName,
+      dateOfBirth: normalizedDateOfBirth,
+      placeOfBirth: normalizedPlaceOfBirth,
+      nationalId: normalizedNationalId,
+      addressFull: normalizedAddressFull,
+      depositaireFunction: normalizedDepositaireFunction,
+      faitA: faitAValue,
+      dateAssemblee: dateAssembleeValue,
       autoprint,
     });
 
