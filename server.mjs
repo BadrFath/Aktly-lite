@@ -1619,16 +1619,87 @@ function formatDateFr(dateStr) {
   return String(dateStr);
 }
 
+/** Format a date string to "DD-MM-YYYY" when possible. */
+function formatDateNumeric(dateStr) {
+  if (!dateStr) return "";
+  const raw = String(dateStr).trim();
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[3]}-${isoMatch[2]}-${isoMatch[1]}`;
+  }
+  const slashMatch = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (slashMatch) {
+    const day = String(slashMatch[1]).padStart(2, "0");
+    const month = String(slashMatch[2]).padStart(2, "0");
+    return `${day}-${month}-${slashMatch[3]}`;
+  }
+  return raw;
+}
+
+function wordwrapHtml(text, width, breakStr = "<br>") {
+  const value = String(text || "").trim();
+  if (!value) return "";
+  const limit = Number(width) || 0;
+  if (limit <= 0) return value;
+
+  const words = value.split(/\s+/);
+  const lines = [];
+  let line = "";
+
+  for (const word of words) {
+    if (!word) continue;
+    if (!line) {
+      if (word.length <= limit) {
+        line = word;
+      } else {
+        for (let i = 0; i < word.length; i += limit) {
+          const chunk = word.slice(i, i + limit);
+          if (chunk.length === limit) {
+            lines.push(chunk);
+          } else {
+            line = chunk;
+          }
+        }
+      }
+      continue;
+    }
+
+    const next = `${line} ${word}`;
+    if (next.length <= limit) {
+      line = next;
+      continue;
+    }
+
+    lines.push(line);
+    line = "";
+
+    if (word.length <= limit) {
+      line = word;
+    } else {
+      for (let i = 0; i < word.length; i += limit) {
+        const chunk = word.slice(i, i + limit);
+        if (chunk.length === limit) {
+          lines.push(chunk);
+        } else {
+          line = chunk;
+        }
+      }
+    }
+  }
+
+  if (line) lines.push(line);
+  return lines.join(breakStr);
+}
+
 /**
  * Generate the publication text (procès-verbal) HTML from available data.
  * Returns { part1, part2 } where part2 is overflow if part1 is very long.
  */
 function generatePubTextHtml(data) {
   const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const enterpriseNumber = he(data.enterpriseNumber || "");
   const companyName = he(data.companyName || "");
-  const dateAg = formatDateFr(data.dateAssemblee || data.changeDate || "");
-  const changeDate = formatDateFr(data.changeDate || data.dateAssemblee || "");
+  const dateAg = formatDateNumeric(data.dateAssemblee || data.changeDate || "");
+  const changeDate = formatDateNumeric(data.changeDate || data.dateAssemblee || "");
   const faitA = he(data.faitA || "");
   const depositaireName = he(data.depositaireName || "");
   const newStreet = he(data.newStreet || "");
@@ -1639,7 +1710,7 @@ function generatePubTextHtml(data) {
   const lines = [];
 
   if (data.services?.cessionParts) {
-    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
     lines.push(`Cession de parts sociales.`);
     lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
     lines.push(``);
@@ -1651,7 +1722,7 @@ function generatePubTextHtml(data) {
     lines.push(`I. Cession de parts sociales`);
     lines.push(`Les parts sociales sont cédées conformément aux dispositions convenues entre les parties.`);
   } else if (data.services?.addressChange) {
-    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
     lines.push(`Transfert de siège social.`);
     lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
     lines.push(``);
@@ -1665,7 +1736,7 @@ function generatePubTextHtml(data) {
       lines.push(`Le siège social est transféré, à compter du ${changeDate}, à l'adresse suivante : ${newAddress}.`);
     }
   } else if (data.services?.dirigeants) {
-    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
     lines.push(`Modification des administrateurs.`);
     lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
     lines.push(``);
@@ -1678,7 +1749,7 @@ function generatePubTextHtml(data) {
     lines.push(`I. Démission et nomination d'administrateur`);
     lines.push(`L'assemblée décide de modifier la composition du conseil d'administration.`);
   } else {
-    lines.push(`${enterpriseNumber}&nbsp; Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
+    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
     lines.push(`Modification statutaire.`);
     lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
     lines.push(``);
@@ -1741,6 +1812,7 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
     const last = actions.length > 1 ? actions.pop() : "";
     phrase = actions.join(", ") + (last ? " et " + last : "");
     phrase = phrase.charAt(0).toUpperCase() + phrase.slice(1);
+    phrase = wordwrapHtml(phrase, 88);
   }
 
   const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1772,12 +1844,21 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
         services: data.services,
       });
 
-  html = html.replaceAll("__PUB_TEXT_PART1__", pubText.part1 || "");
+  const hasPart2 = Boolean(pubText?.part2 && String(pubText.part2).trim());
+  if (!hasPart2) {
+    html = html.replace(
+      /<div id="pf3"[^>]*data-page-no="3"[^>]*>[\s\S]*?<div class="pi"[^>]*><\/div><\/div>/g,
+      ""
+    );
+  }
+
+  const pubTextPrefix = formattedNumber ? `${formattedNumber} ` : "";
+  html = html.replaceAll("__PUB_TEXT_PART1__", `${pubTextPrefix}${pubText.part1 || ""}`);
   html = html.replaceAll("__PUB_TEXT_PART2__", pubText.part2 || "");
   html = html.replaceAll("__USER_FIRST_NAME__", he(data.userFirstName));
   html = html.replaceAll("__USER_LAST_NAME__", he(data.userLastName));
   html = html.replaceAll("__FAIT_A__", he(data.faitA));
-  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee)));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateNumeric(data.dateAssemblee)));
 
   if (autoprint) {
     html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
@@ -1805,7 +1886,7 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   html = html.replaceAll("__FISCAL_YEAR_END_DAY__", he(data.fiscalYearEndDay || ""));
   html = html.replaceAll("__FISCAL_YEAR_END_MONTH__", he(data.fiscalYearEndMonth || ""));
   html = html.replaceAll("__ANNUAL_MEETING_MONTH__", he(data.annualMeetingMonth || ""));
-  html = html.replaceAll("__DATE_CONSTITUTION__", he(formatDateFr(data.dateConstitution || "")));
+  html = html.replaceAll("__DATE_CONSTITUTION__", he(formatDateNumeric(data.dateConstitution || "")));
   html = html.replaceAll("__ADDRESS__", he(data.companyAddress || ""));
   html = html.replaceAll("__ADDR_STREET__", he(data.addrStreet || ""));
   html = html.replaceAll("__ADDR_HOUSE_NUMBER__", he(data.addrHouseNumber || ""));
@@ -1814,10 +1895,10 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   html = html.replaceAll("__ADDR_MUNICIPALITY__", he(data.addrMunicipality || ""));
   html = html.replaceAll("__ADDR_COUNTRY__", he(data.addrCountry || "Belgique"));
   html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
-  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "")));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateNumeric(data.dateAssemblee || "")));
 
   const users = data.users || [];
-  const assembleeDateStr = he(formatDateFr(data.dateAssemblee || ""));
+  const assembleeDateStr = he(formatDateNumeric(data.dateAssemblee || ""));
   const checkboxCHtml = 'C <span class="xmark" style="left:-38px;">&#x2716;</span>';
   const checkboxNHtml = 'N <span class="xmark" style="left:-38px;">&#x2716;</span>';
   for (let i = 1; i <= 5; i++) {
@@ -1835,7 +1916,7 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   html = html.replace(/__TOKEN__\s+__TOKEN__\s+agissant/g, `${signatoryName} agissant`);
 
   // Replace "le __TOKEN__" (signing date line) with the assembly date
-  const dateStr = he(formatDateFr(data.dateAssemblee || ""));
+  const dateStr = he(formatDateNumeric(data.dateAssemblee || ""));
   html = html.replace(/le\s+__TOKEN__/g, `le ${dateStr}`);
 
   // Replace email __TOKEN__
@@ -1859,10 +1940,10 @@ async function buildAttestation1HtmlPage(data, autoprint = false) {
     try {
       await fs.access(templatePath);
     } catch {
-      templatePath = await resolveHtmlTemplatePath("style1", "attestation1-template.html");
+      templatePath = await resolveHtmlTemplatePath("style5", "attestation1-template.html");
     }
   } else {
-    templatePath = await resolveHtmlTemplatePath("style1", "attestation1-template.html");
+    templatePath = await resolveHtmlTemplatePath("style5", "attestation1-template.html");
   }
   if (!templatePath) throw new Error("Template attestation1-template.html introuvable");
   let html = await fs.readFile(templatePath, "utf-8");
@@ -1873,26 +1954,35 @@ async function buildAttestation1HtmlPage(data, autoprint = false) {
   const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
 
 
-  html = html.replaceAll("__FIRST_NAME__", he(data.firstName || "Non renseigné"));
-  html = html.replaceAll("__LAST_NAME__", he(data.lastName || "Non renseigné"));
-  html = html.replaceAll("__DATE_OF_BIRTH__", he(data.dateOfBirth || "Non renseigné"));
-  html = html.replaceAll("__PLACE_OF_BIRTH__", he(data.placeOfBirth || "Non renseigné"));
-  html = html.replaceAll("__NATIONAL_ID__", he(data.nationalId || "Non renseigné"));
-  html = html.replaceAll("__ADDRESS_FULL__", he(data.addressFull || "Non renseigné"));
-  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName || "Non renseigné"));
-  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber || "Non renseigné"));
-  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm || "Non renseigné"));
-  html = html.replaceAll("__FUNCTION__", he(data.depositaireFunction || "Non renseigné"));
-  html = html.replaceAll("__FAIT_A__", he(data.faitA || "Non renseigné"));
-  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "Non renseigné")));
+  const genderRaw = String(data.gender || "").trim().toLowerCase();
+  const salutation =
+    genderRaw === "m" || genderRaw === "male" || genderRaw === "homme" || genderRaw === "monsieur"
+      ? " Monsieur"
+      : genderRaw === "f" || genderRaw === "female" || genderRaw === "femme" || genderRaw === "madame"
+        ? " Madame"
+        : " Madame/Monsieur";
+  const checkboxChecked = "☒";
+  const checkboxEmpty = "□";
+  const services = data.services || {};
 
-  // Remplacement spécifique pour le numéro de téléphone (premier __TOKEN__ du template)
-  // On suppose que data.phone contient le numéro GSM Veriff
-  let phoneValue = he(data.phone || data.gsm || "Non renseigné");
-  html = html.replace(/__TOKEN__/, phoneValue);
-
-  // Remplacer tous les autres __TOKEN__ restants par "Non renseigné"
-  html = html.replaceAll("__TOKEN__", "Non renseigné");
+  html = html.replaceAll("__SALUTATION__", he(salutation));
+  html = html.replaceAll("__FIRST_NAME__", he(data.firstName || ""));
+  html = html.replaceAll("__LAST_NAME__", he(data.lastName || ""));
+  html = html.replaceAll("__DATE_OF_BIRTH__", he(data.dateOfBirth || ""));
+  html = html.replaceAll("__PLACE_OF_BIRTH__", he(data.placeOfBirth || "............"));
+  html = html.replaceAll("__NATIONAL_ID__", he(data.nationalId || ""));
+  html = html.replaceAll("__ADDRESS_FULL__", he(data.addressFull || "............."));
+  html = html.replaceAll("__PHONE__", he(data.phone || data.gsm || ""));
+  html = html.replaceAll("__EMAIL__", he(data.email || data.userEmail || ""));
+  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName || "........."));
+  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber || ""));
+  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm || ""));
+  html = html.replaceAll("__FUNCTION__", he(data.depositaireFunction || ""));
+  html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateNumeric(data.dateAssemblee || "")));
+  html = html.replaceAll("__CHECKBOX_DIRIGEANTS__", services.dirigeants ? checkboxChecked : checkboxEmpty);
+  html = html.replaceAll("__CHECKBOX_CESSION__", services.cessionParts ? checkboxChecked : checkboxEmpty);
+  html = html.replaceAll("__CHECKBOX_ADDRESS__", services.addressChange ? checkboxChecked : checkboxEmpty);
 
   if (autoprint) {
     html = html.replace("</body>", '<script>window.onload=function(){window.print();}</script></body>');
@@ -1917,7 +2007,7 @@ async function buildDeclarationHtmlPage(data, autoprint = false) {
   html = html.replaceAll("__ADDRESS__", he(data.companyAddress || ""));
   html = html.replaceAll("__SIGNATORY_NAME__", he(data.signatoryName || ""));
   html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
-  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateFr(data.dateAssemblee || "")));
+  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateNumeric(data.dateAssemblee || "")));
 
   const dirigeants = data.dirigeants || [];
   for (let i = 1; i <= 3; i++) {
@@ -2358,6 +2448,17 @@ async function buildDossierDocument(documentKey, body) {
       person?.addressFull || person?.adresse || person?.address,
       normalizedCompanyAddress
     );
+    const normalizedGender = safeValue(
+      person?.gender || person?.sexe || person?.civilite || person?.genre || person?.sex
+    );
+    const normalizedPhone = safeValue(
+      depositaire?.gsm || person?.gsm || person?.phone || depositaire?.verification?.GSM || body?.gsm
+    );
+    const services = {
+      cessionParts: Boolean(body?.cession_parts_service),
+      addressChange: Boolean(body?.address_service) || Boolean(addressInfo?.rue),
+      dirigeants: Boolean(body?.dirigeants_service),
+    };
     const faitAValue = newCity || String(addressInfo?.commune || "").trim();
     const dateAssembleeValue = agDate !== "Non renseignee" ? agDate : changeDate;
 
@@ -2372,6 +2473,10 @@ async function buildDossierDocument(documentKey, body) {
       nationalId: normalizedNationalId,
       addressFull: normalizedAddressFull,
       depositaireFunction: normalizedDepositaireFunction,
+      gender: normalizedGender,
+      phone: normalizedPhone,
+      email: String(user?.email || ""),
+      services,
       faitA: faitAValue,
       dateAssemblee: dateAssembleeValue,
       autoprint,
