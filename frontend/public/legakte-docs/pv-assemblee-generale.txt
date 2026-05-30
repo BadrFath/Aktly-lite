@@ -1,11 +1,9 @@
 Tâche:
 Génère le PV conforme au gabarit ci-dessous, n’inclus que les sections pertinentes.
+- Ne mentionne pas la forme juridique (ex. ELP).
 
 Gabarit à respecter (placeholders à remplacer) :
-**{{societe.forme}} « {{societe.nom}} »**
-{{societe.adresse_siege_actuel}}
-
-**Procès-verbal de l’assemblée générale extraordinaire du {{assemblee.date|fr}}**
+Procès-verbal de l’assemblée générale extraordinaire du {{assemblee.date|fr}}
 
 Cession de parts, transfert de siège social, démission et nomination d’administrateur.
 
@@ -19,31 +17,35 @@ L’ensemble du capital étant réuni ({{capital.total_actions}} actions), l’a
 - Démission de l’administrateur
 - Nomination de l’administrateur
 
-**Résolutions :**
+Résolutions :
 {{#cessions.length}}
-**1. Cession d’actions**
+1. Cession d’actions
 {{#cessions}}- {{cedant}} cède {{quantite}} actions à {{acquereur}}, lequel/laquelle accepte.
 {{/cessions}}
 {{/cessions.length}}
 
+{{#repartition_parts.actionnaires.length}}
+La répartition des actions avant et après modification, pour un total de {{repartition_parts.total_actions}} actions, est la suivante : {{#repartition_parts.actionnaires}}{{nom}} : {{avant}} actions avant modification, {{apres}} actions après modification. {{/repartition_parts.actionnaires}}
+{{/repartition_parts.actionnaires.length}}
+
 {{#transfert_siege.nouvelle_adresse}}
-**2. Transfert de siège social**
+2. Transfert de siège social
 Le siège social est transféré à {{transfert_siege.nouvelle_adresse}}, avec effet au {{transfert_siege.date_effet|fr}}.
 {{/transfert_siege.nouvelle_adresse}}
 
 {{#administrateurs_demissionnaires.length}}
-**3. Démission de l’administrateur**
+3. Démission de l’administrateur
 La démission de {{#administrateurs_demissionnaires}}{{.}}{{^last}}, {{/last}}{{/administrateurs_demissionnaires}} de son poste d’administrateur lui donnant décharge de toute responsabilité sans réserve, avec effet au {{assemblee.date|fr}}.
 {{/administrateurs_demissionnaires.length}}
 
 {{#administrateurs_nommes.length}}
-**4. Nomination d’un administrateur**
+4. Nomination d’un administrateur
 La dite assemblée générale extraordinaire accepte la nomination de {{#administrateurs_nommes}}{{.}}{{^last}}, {{/last}}{{/administrateurs_nommes}} au poste d’administrateur, lequel/laquelle accepte, avec effet au {{assemblee.date|fr}}.
 {{/administrateurs_nommes.length}}
 
 L’ordre du jour étant épuisé, l’assemblée est levée à {{assemblee.heure_fin}}.
 
-**Signatures :**
+Signatures :
 {{#signataires}}- {{.}}
 {{/signataires}}
 

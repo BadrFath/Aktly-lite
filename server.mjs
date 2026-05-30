@@ -1750,87 +1750,348 @@ function wordwrapHtml(text, width, breakStr = "<br>") {
 }
 
 /**
- * Generate the publication text (procès-verbal) HTML from available data.
- * Returns { part1, part2 } where part2 is overflow if part1 is very long.
+ * Generate the publication text (procès-verbal) in plain text.
+ * Only includes sections that have data, following the legacy template.
  */
 function generatePubTextHtml(data) {
-  const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const companyName = he(data.companyName || "");
-  const dateAg = formatDateNumeric(data.dateAssemblee || data.changeDate || "");
-  const changeDate = formatDateNumeric(data.changeDate || data.dateAssemblee || "");
-  const faitA = he(data.faitA || "");
-  const depositaireName = he(data.depositaireName || "");
-  const newStreet = he(data.newStreet || "");
-  const newPostal = he(data.newPostal || "");
-  const newCity = he(data.newCity || "");
-  const newAddress = `${newStreet}, ${newPostal} ${newCity}`.trim().replace(/^,\s*/, "");
+  const lang = String(data?.lang || data?.demandeLang || "fr").toLowerCase();
+  const isNl = lang === "nl";
+  const assemblee = data?.assemblee || {};
+  const dateAg = formatDateLong(assemblee.date || data.dateAssemblee || data.changeDate || "", lang);
+  const lieu = toScalarString(assemblee.lieu || data.faitA || data.lieu || "");
+  const heureDebut = toScalarString(
+    assemblee.heure_debut || assemblee.heureDebut || data.heureDebut || data.heure_debut || ""
+  );
+  const heureFin = toScalarString(
+    assemblee.heure_fin || assemblee.heureFin || data.heureFin || data.heure_fin || ""
+  );
+
+  const services = data?.services || {};
+  const servicesList = Array.isArray(data?.servicesList) ? data.servicesList : [];
+  const participants = Array.isArray(data?.participants) ? data.participants : [];
+  const capitalTotal = toScalarString(
+    data?.capitalTotal || data?.capital?.total_actions || data?.capital?.totalActions || ""
+  );
+  const cessions = Array.isArray(data?.cessions) ? data.cessions : [];
+  const repartitionParts = data?.repartitionParts || data?.repartition_parts || null;
+  const transfertSiege = data?.transfertSiege || data?.transfert_siege || {};
+  const administrateursDemissionnaires = Array.isArray(data?.administrateursDemissionnaires)
+    ? data.administrateursDemissionnaires
+    : Array.isArray(data?.administrateurs_demissionnaires)
+    ? data.administrateurs_demissionnaires
+    : [];
+  const administrateursNommes = Array.isArray(data?.administrateursNommes)
+    ? data.administrateursNommes
+    : Array.isArray(data?.administrateurs_nommes)
+    ? data.administrateurs_nommes
+    : [];
+  const signataires = Array.isArray(data?.signataires) ? data.signataires : [];
+
+  const normalizeName = (person) => {
+    if (person === null || person === undefined) return "";
+    if (typeof person === "string" || typeof person === "number" || typeof person === "boolean") {
+      return String(person).trim();
+    }
+    if (typeof person !== "object") return "";
+    const explicit = toScalarString(person.name || person.fullName || person.full_name || person.nom_complet);
+    const given = toScalarString(person.givenName || person.prenom || person.firstName || person.given_name);
+    const surname = toScalarString(person.surname || person.lastName || person.nom || person.family_name);
+    const combined = [given, surname].filter(Boolean).join(" ").trim();
+    if (explicit) return explicit;
+    if (combined) return combined;
+    return toScalarString(person.nom);
+  };
+
+  const normalizeNameList = (entries) =>
+    Array.isArray(entries)
+      ? entries.map(normalizeName).filter((value) => value)
+      : [];
+
+  const normalizeParticipants = (entries) =>
+    Array.isArray(entries)
+      ? entries
+          .map((participant) => {
+            if (!participant) return "";
+            const civilite = toScalarString(participant.civilite || participant.title || participant.civility);
+            const nom = normalizeName(participant);
+            const actions = toScalarString(participant.actions || participant.aandelen || participant.shares);
+            const namePart = [civilite, nom].filter(Boolean).join(" ").trim();
+            const actionsLabel = actions ? `${actions} ${isNl ? "aandelen" : "actions"}` : "";
+            return [namePart, actionsLabel].filter(Boolean).join(", ");
+          })
+          .filter(Boolean)
+      : [];
+
+  const normalizeCessions = (entries) =>
+    Array.isArray(entries)
+      ? entries
+          .map((cession) => {
+            if (!cession || typeof cession !== "object") return null;
+            const cedant = normalizeName(cession.cedant || cession.cedant_name || cession.cedantName);
+            const acquereur = normalizeName(cession.acquereur || cession.acquereur_name || cession.acquereurName);
+            const quantite = toScalarString(cession.quantite || cession.quantity || cession.actions || cession.shares);
+            if (!cedant || !acquereur || !quantite) {
+              return null;
+            }
+            return { cedant, acquereur, quantite };
+          })
+          .filter(Boolean)
+      : [];
+
+  const normalizedServices = {
+    cessionParts: Boolean(
+      services.cessionParts || services.cession_parts || services.cession || services.cession_parts_service
+    ),
+    addressChange: Boolean(
+      services.addressChange || services.address_change || services.address || services.address_service
+    ),
+    dirigeants: Boolean(services.dirigeants || services.dirigeants_service),
+  };
+
+  if (!normalizedServices.cessionParts && cessions.length > 0) {
+    normalizedServices.cessionParts = true;
+  }
+  if (!normalizedServices.addressChange && toScalarString(transfertSiege?.nouvelle_adresse || data?.newAddress)) {
+    normalizedServices.addressChange = true;
+  }
+  if (
+    !normalizedServices.dirigeants &&
+    (administrateursDemissionnaires.length > 0 || administrateursNommes.length > 0)
+  ) {
+    normalizedServices.dirigeants = true;
+  }
+  if (servicesList.length > 0) {
+    const normalizedServiceLabels = servicesList.map((item) => String(item || "").toLowerCase());
+    if (normalizedServiceLabels.some((label) => label.includes("cession") || label.includes("aandeel"))) {
+      normalizedServices.cessionParts = true;
+    }
+    if (normalizedServiceLabels.some((label) => label.includes("siege") || label.includes("zetel"))) {
+      normalizedServices.addressChange = true;
+    }
+    if (normalizedServiceLabels.some((label) => label.includes("démission") || label.includes("ontslag"))) {
+      normalizedServices.dirigeants = true;
+    }
+    if (normalizedServiceLabels.some((label) => label.includes("nomination") || label.includes("benoeming"))) {
+      normalizedServices.dirigeants = true;
+    }
+  }
+
+  const serviceSummary = [];
+  if (normalizedServices.cessionParts) {
+    serviceSummary.push(isNl ? "Cessie van aandelen" : "Cession de parts");
+  }
+  if (normalizedServices.addressChange) {
+    serviceSummary.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siège social");
+  }
+  if (normalizedServices.dirigeants) {
+    serviceSummary.push(isNl ? "Ontslag en benoeming van bestuurder" : "Démission et nomination d’administrateur");
+  }
+
+  const orderItems = [];
+  if (normalizedServices.cessionParts) {
+    orderItems.push(isNl ? "Cessie van aandelen" : "Cession de parts");
+  }
+  if (normalizedServices.addressChange) {
+    orderItems.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siège social");
+  }
+  if (normalizedServices.dirigeants) {
+    orderItems.push(isNl ? "Ontslag van de bestuurder" : "Démission de l’administrateur");
+    orderItems.push(isNl ? "Benoeming van de bestuurder" : "Nomination de l’administrateur");
+  }
+
+  const normalizedParticipants = normalizeParticipants(participants);
+  const normalizedCessions = normalizeCessions(cessions);
+  const demissionnaires = normalizeNameList(administrateursDemissionnaires);
+  const nommes = normalizeNameList(administrateursNommes);
+  const signatairesList = normalizeNameList(signataires);
 
   const lines = [];
-
-  if (data.services?.cessionParts) {
-    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
-    lines.push(`Cession de parts sociales.`);
-    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
-    lines.push(``);
-    lines.push(`Puisque la totalité du capital est représentée, l'assemblée peut légitimement délibérer sur l'ordre du jour:`);
-    lines.push(`- Cession de parts sociales`);
-    lines.push(``);
-    lines.push(`Décisions:`);
-    lines.push(``);
-    lines.push(`I. Cession de parts sociales`);
-    lines.push(`Les parts sociales sont cédées conformément aux dispositions convenues entre les parties.`);
-  } else if (data.services?.addressChange) {
-    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
-    lines.push(`Transfert de siège social.`);
-    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
-    lines.push(``);
-    lines.push(`Puisque la totalité du capital est représentée, l'assemblée peut légitimement délibérer sur l'ordre du jour:`);
-    lines.push(`- Transfert de siège social`);
-    lines.push(``);
-    lines.push(`Décisions:`);
-    lines.push(``);
-    lines.push(`I. Transfert de siège social`);
-    if (newAddress && newAddress !== ", ") {
-      lines.push(`Le siège social est transféré, à compter du ${changeDate}, à l'adresse suivante : ${newAddress}.`);
+  const pushBlank = () => {
+    if (lines.length > 0 && lines[lines.length - 1] !== "") {
+      lines.push("");
     }
-  } else if (data.services?.dirigeants) {
-    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
-    lines.push(`Modification des administrateurs.`);
-    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
-    lines.push(``);
-    lines.push(`Puisque la totalité du capital est représentée, l'assemblée peut légitimement délibérer sur l'ordre du jour:`);
-    lines.push(`- Démission administrateur`);
-    lines.push(`- Nomination d'administrateur`);
-    lines.push(``);
-    lines.push(`Décisions:`);
-    lines.push(``);
-    lines.push(`I. Démission et nomination d'administrateur`);
-    lines.push(`L'assemblée décide de modifier la composition du conseil d'administration.`);
-  } else {
-    lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAg}`);
-    lines.push(`Modification statutaire.`);
-    lines.push(`L'assemblée générale extraordinaire de la société s'est tenue le ${dateAg}${faitA ? ` à ${faitA}` : ""}, en présence de:`);
-    lines.push(``);
-    lines.push(`L'assemblée délibère sur les modifications statutaires.`);
-  }
-
-  lines.push(``);
-  lines.push(`L'ordre du jour étant épuisé, la séance est levée.`);
-  lines.push(``);
-  lines.push(`Signatures:`);
-  if (depositaireName) {
-    lines.push(`- ${depositaireName}`);
-  }
-
-  // Split into part1 (first ~40 lines) and part2 (overflow) — template page 2/3 split
-  const SPLIT = 40;
-  const part1Lines = lines.slice(0, SPLIT);
-  const part2Lines = lines.slice(SPLIT);
-
-  return {
-    part1: part1Lines.map(l => l === "" ? "<br>" : l).join("<br>"),
-    part2: part2Lines.length > 0 ? part2Lines.map(l => l === "" ? "<br>" : l).join("<br>") : "",
   };
+
+  if (dateAg) {
+    lines.push(
+      isNl
+        ? `Proces-verbaal van de buitengewone algemene vergadering van ${dateAg}`
+        : `Procès-verbal de l’assemblée générale extraordinaire du ${dateAg}`
+    );
+    pushBlank();
+  }
+
+  if (serviceSummary.length > 0) {
+    lines.push(`${serviceSummary.join(", ")}.`);
+    pushBlank();
+  }
+
+  if (dateAg || lieu || heureDebut) {
+    if (isNl) {
+      const details = [];
+      if (lieu) details.push(`te ${lieu}`);
+      if (dateAg) details.push(`op ${dateAg}`);
+      if (heureDebut) details.push(`om ${heureDebut}`);
+      lines.push(
+        `De buitengewone algemene vergadering van de vennootschap werd gehouden${details.length ? " " + details.join(" ") : ""} in aanwezigheid van:`
+      );
+    } else {
+      const details = [];
+      if (lieu) details.push(`au ${lieu}`);
+      if (dateAg) details.push(`le ${dateAg}`);
+      if (heureDebut) details.push(`à ${heureDebut}`);
+      lines.push(
+        `L’assemblée générale extraordinaire de la société a été réunie${details.length ? " " + details.join(" ") : ""} en présence de :`
+      );
+    }
+    normalizedParticipants.forEach((participant) => lines.push(`- ${participant}`));
+    pushBlank();
+  }
+
+  if (capitalTotal) {
+    lines.push(
+      isNl
+        ? `Het volledige kapitaal is vertegenwoordigd (${capitalTotal} aandelen), de vergadering kan geldig beslissen over de agenda:`
+        : `L’ensemble du capital étant réuni (${capitalTotal} actions), l’assemblée peut valablement statuer sur l’ordre du jour :`
+    );
+    orderItems.forEach((item) => lines.push(`- ${item}`));
+    pushBlank();
+  }
+
+  const hasResolutions =
+    normalizedCessions.length > 0 ||
+    (repartitionParts && Array.isArray(repartitionParts.actionnaires) && repartitionParts.actionnaires.length > 0) ||
+    toScalarString(transfertSiege?.nouvelle_adresse || data?.newAddress) ||
+    demissionnaires.length > 0 ||
+    nommes.length > 0;
+
+  if (hasResolutions) {
+    lines.push(isNl ? "Besluiten:" : "Résolutions:");
+    pushBlank();
+  }
+
+  if (normalizedCessions.length > 0) {
+    lines.push(isNl ? "1. Cessie van aandelen" : "1. Cession d’actions");
+    normalizedCessions.forEach((cession) => {
+      lines.push(
+        isNl
+          ? `- ${cession.cedant} draagt ${cession.quantite} aandelen over aan ${cession.acquereur}, die aanvaardt.`
+          : `- ${cession.cedant} cède ${cession.quantite} actions à ${cession.acquereur}, lequel/laquelle accepte.`
+      );
+    });
+    pushBlank();
+  }
+
+  const actionnaires = Array.isArray(repartitionParts?.actionnaires) ? repartitionParts.actionnaires : [];
+  if (actionnaires.length > 0) {
+    const totalActions = toScalarString(repartitionParts?.total_actions || repartitionParts?.totalActions || "");
+    const actionnaireLines = actionnaires
+      .map((actionnaire) => {
+        if (!actionnaire || typeof actionnaire !== "object") return "";
+        const nom = normalizeName(actionnaire);
+        const avant = toScalarString(actionnaire.avant || actionnaire.before);
+        const apres = toScalarString(actionnaire.apres || actionnaire.after);
+        if (!nom || !avant || !apres) return "";
+        return isNl
+          ? `${nom}: ${avant} aandelen voor de wijziging, ${apres} aandelen na de wijziging.`
+          : `${nom} : ${avant} actions avant modification, ${apres} actions après modification.`;
+      })
+      .filter(Boolean)
+      .join(" ");
+
+    if (actionnaireLines) {
+      lines.push(
+        isNl
+          ? `De verdeling van de aandelen voor en na de wijziging, met in totaal ${totalActions || capitalTotal} aandelen, luidt als volgt: ${actionnaireLines}`
+          : `La répartition des actions avant et après modification, pour un total de ${totalActions || capitalTotal} actions, est la suivante : ${actionnaireLines}`
+      );
+      pushBlank();
+    }
+  }
+
+  const transfertAddress = toScalarString(transfertSiege?.nouvelle_adresse || data?.newAddress || "");
+  if (transfertAddress) {
+    const effectDate = formatDateLong(transfertSiege?.date_effet || data?.changeDate || "", lang);
+    lines.push(isNl ? "2. Overdracht van maatschappelijke zetel" : "2. Transfert de siège social");
+    if (effectDate) {
+      lines.push(
+        isNl
+          ? `De maatschappelijke zetel wordt overgedragen naar ${transfertAddress}, met ingang op ${effectDate}.`
+          : `Le siège social est transféré à ${transfertAddress}, avec effet au ${effectDate}.`
+      );
+    } else {
+      lines.push(
+        isNl
+          ? `De maatschappelijke zetel wordt overgedragen naar ${transfertAddress}.`
+          : `Le siège social est transféré à ${transfertAddress}.`
+      );
+    }
+    pushBlank();
+  }
+
+  if (demissionnaires.length > 0) {
+    const names = demissionnaires.join(", ");
+    lines.push(isNl ? "3. Ontslag van de bestuurder" : "3. Démission de l’administrateur");
+    if (dateAg) {
+      lines.push(
+        isNl
+          ? `Het ontslag van ${names} uit zijn functie van bestuurder met kwijting van alle aansprakelijkheid zonder voorbehoud, met ingang op ${dateAg}.`
+          : `La démission de ${names} de son poste d’administrateur lui donnant décharge de toute responsabilité sans réserve, avec effet au ${dateAg}.`
+      );
+    } else {
+      lines.push(
+        isNl
+          ? `Het ontslag van ${names} uit zijn functie van bestuurder met kwijting van alle aansprakelijkheid zonder voorbehoud.`
+          : `La démission de ${names} de son poste d’administrateur lui donnant décharge de toute responsabilité sans réserve.`
+      );
+    }
+    pushBlank();
+  }
+
+  if (nommes.length > 0) {
+    const names = nommes.join(", ");
+    lines.push(isNl ? "4. Benoeming van een bestuurder" : "4. Nomination d’un administrateur");
+    if (dateAg) {
+      lines.push(
+        isNl
+          ? `Deze buitengewone algemene vergadering aanvaardt de benoeming van ${names} tot bestuurder, die aanvaardt, met ingang op ${dateAg}.`
+          : `La dite assemblée générale extraordinaire accepte la nomination de ${names} au poste d’administrateur, lequel/laquelle accepte, avec effet au ${dateAg}.`
+      );
+    } else {
+      lines.push(
+        isNl
+          ? `Deze buitengewone algemene vergadering aanvaardt de benoeming van ${names} tot bestuurder, die aanvaardt.`
+          : `La dite assemblée générale extraordinaire accepte la nomination de ${names} au poste d’administrateur, lequel/laquelle accepte.`
+      );
+    }
+    pushBlank();
+  }
+
+  if (isNl) {
+    lines.push(
+      heureFin
+        ? `De agenda is uitgeput, de vergadering wordt gesloten om ${heureFin}.`
+        : "De agenda is uitgeput, de vergadering wordt gesloten."
+    );
+  } else {
+    lines.push(
+      heureFin
+        ? `L'ordre du jour étant épuisé, l'assemblée est levée à ${heureFin}.`
+        : "L'ordre du jour étant épuisé, l'assemblée est levée."
+    );
+  }
+
+  pushBlank();
+  if (signatairesList.length > 0) {
+    lines.push(isNl ? "Handtekeningen:" : "Signatures:");
+    signatairesList.forEach((name) => lines.push(`- ${name}`));
+  }
+
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+
+  return { part1: lines.join("\n"), part2: "" };
 }
 
 async function buildFormulaire1HtmlPage(data, autoprint = false) {
@@ -2838,7 +3099,8 @@ async function buildDossierDocument(documentKey, body) {
       addressChange: Boolean(body?.address_service),
       dirigeants: Boolean(body?.dirigeants_service),
     };
-    const pubTextRaw = body?.pub_text;
+    const donneesActe = body?.donnees_acte || body?.donneesActe || null;
+    const pubTextRaw = body?.pub_text ?? donneesActe?.pub_text ?? donneesActe?.pubText;
     let pvPubText = "";
     if (typeof pubTextRaw === "string") {
       pvPubText = pubTextRaw;
@@ -2856,6 +3118,50 @@ async function buildDossierDocument(documentKey, body) {
         }
       }
       pvPubText = parts.filter(Boolean).join("\n");
+    }
+    if (!pvPubText.trim()) {
+      const assembleeInfo = donneesActe?.assemblee || {};
+      const signatairesFallback = dirigeants
+        .map((dirigeant) => `${dirigeant?.givenName || ""} ${dirigeant?.surname || ""}`.trim())
+        .filter(Boolean);
+      const fallbackText = generatePubTextHtml({
+        lang: body?.langue_entreprise || companyData?.langue_entreprise || docLang,
+        services,
+        servicesList: donneesActe?.services || body?.services || [],
+        assemblee: {
+          date: assembleeInfo?.date || agDateDisplay || changeDateDisplay,
+          lieu: assembleeInfo?.lieu || body?.fait_a || body?.faitA || faitAValue,
+          heure_debut: assembleeInfo?.heure_debut || body?.heure_debut || body?.heureDebut || "",
+          heure_fin: assembleeInfo?.heure_fin || body?.heure_fin || body?.heureFin || "",
+        },
+        participants: donneesActe?.participants || body?.participants || [],
+        capital: donneesActe?.capital || body?.capital || {},
+        capitalTotal:
+          donneesActe?.capital?.total_actions ||
+          body?.capital_total_actions ||
+          body?.total_actions ||
+          body?.capital?.total_actions ||
+          "",
+        cessions: donneesActe?.cessions || body?.cessions || [],
+        repartitionParts:
+          donneesActe?.repartition_parts || donneesActe?.repartitionParts || body?.repartition_parts || body?.repartitionParts || null,
+        transfertSiege:
+          donneesActe?.transfert_siege ||
+          body?.transfert_siege ||
+          {
+            nouvelle_adresse: newAddressDisplay,
+            date_effet: changeDateDisplay,
+          },
+        administrateurs_demissionnaires:
+          donneesActe?.administrateurs_demissionnaires || body?.administrateurs_demissionnaires || [],
+        administrateurs_nommes: donneesActe?.administrateurs_nommes || body?.administrateurs_nommes || [],
+        signataires: donneesActe?.signataires || body?.signataires || signatairesFallback,
+        newAddress: newAddressDisplay,
+        dateAssemblee: agDateDisplay || changeDateDisplay,
+        changeDate: changeDateDisplay,
+        faitA: faitAValue,
+      });
+      pvPubText = fallbackText?.part1 || "";
     }
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
     const pvHtml = buildPvAssembleeGeneraleHtmlPage(
