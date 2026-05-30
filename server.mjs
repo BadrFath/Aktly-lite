@@ -1528,6 +1528,32 @@ function readDescriptionValue(descriptions, preferredLang = "fr") {
   return fallback?.value ? String(fallback.value).trim() : "";
 }
 
+function toScalarString(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (Object.prototype.hasOwnProperty.call(value, "value")) {
+      return String(value.value ?? "");
+    }
+    const first = value[0];
+    if (first && typeof first === "object" && Object.prototype.hasOwnProperty.call(first, "value")) {
+      return String(first.value ?? "");
+    }
+    if (typeof first === "string" || typeof first === "number" || typeof first === "boolean") {
+      return String(first);
+    }
+    return "";
+  }
+  if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "value")) {
+    return String(value.value ?? "");
+  }
+  return "";
+}
+
 function formatNowForHeader() {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -1619,6 +1645,29 @@ function formatDateFr(dateStr) {
   return String(dateStr);
 }
 
+function formatDateLong(dateStr, lang = "fr") {
+  if (!dateStr) return "";
+  const raw = String(dateStr).trim();
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let date;
+  if (isoMatch) {
+    date = new Date(Date.UTC(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3])));
+  } else {
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      return raw;
+    }
+    date = parsed;
+  }
+  const locale = String(lang || "fr").toLowerCase() === "nl" ? "nl-BE" : "fr-BE";
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 /** Format a date string to "DD-MM-YYYY" when possible. */
 function formatDateNumeric(dateStr) {
   if (!dateStr) return "";
@@ -1634,6 +1683,15 @@ function formatDateNumeric(dateStr) {
     return `${day}-${month}-${slashMatch[3]}`;
   }
   return raw;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function wordwrapHtml(text, width, breakStr = "<br>") {
@@ -1816,6 +1874,36 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   }
 
   const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const toString = (value) => {
+    if (Array.isArray(value)) {
+      const flattened = value
+        .map((item) => (typeof item === "string" || typeof item === "number" || typeof item === "boolean" ? String(item) : ""))
+        .filter(Boolean);
+      return flattened.join("<br>");
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    return "";
+  };
+  const normalizePubText = (raw) => {
+    if (typeof raw === "string") {
+      return { part1: raw };
+    }
+    if (raw && typeof raw === "object") {
+      const normalized = {};
+      for (const key of ["part1", "part2", "part3", "part4"]) {
+        if (Object.prototype.hasOwnProperty.call(raw, key)) {
+          normalized[key] = toString(raw[key]);
+        }
+      }
+      if (Object.keys(normalized).length === 0 && Object.keys(raw).length > 0) {
+        normalized.part1 = toString(raw);
+      }
+      return normalized;
+    }
+    return {};
+  };
 
   html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber));
   html = html.replaceAll("__COMPANY_NAME__", he(data.companyName));
@@ -1825,26 +1913,15 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   html = html.replaceAll("__ADDR_BOX__", he(data.address?.box));
   html = html.replaceAll("__ADDR_ZIPCODE__", he(data.address?.postalCode));
   html = html.replaceAll("__ADDR_MUNICIPALITY__", he(data.address?.municipality));
-  html = html.replaceAll("__ADDR_COUNTRY__", he(data.address?.country || "Belgique"));
+  html = html.replaceAll("__ADDR_COUNTRY__", he(data.address?.country || ""));
   html = html.replaceAll("__PHRASE__", phrase); // raw – may contain <br>
 
-  // Auto-generate pub_text if not provided
-  const pubText = (data.pubText?.part1)
-    ? data.pubText
-    : generatePubTextHtml({
-        enterpriseNumber: formattedNumber,
-        companyName: data.companyName,
-        dateAssemblee: data.dateAssemblee,
-        changeDate: data.changeDate,
-        faitA: data.faitA,
-        depositaireName: `${data.userFirstName || ""} ${data.userLastName || ""}`.trim(),
-        newStreet: data.newAddress?.street || data.address?.street || "",
-        newPostal: data.newAddress?.postalCode || "",
-        newCity: data.newAddress?.municipality || "",
-        services: data.services,
-      });
-
+  const pubText = normalizePubText(data.pubText);
+  const hasPart1 = Boolean(pubText?.part1 && String(pubText.part1).trim());
   const hasPart2 = Boolean(pubText?.part2 && String(pubText.part2).trim());
+  if (!hasPart1) {
+    html = html.replace(/<style>[\s\S]*?<\/style>\s*/i, "");
+  }
   if (!hasPart2) {
     html = html.replace(
       /<div id="pf3"[^>]*data-page-no="3"[^>]*>[\s\S]*?<div class="pi"[^>]*><\/div><\/div>/g,
@@ -1852,7 +1929,8 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
     );
   }
 
-  const pubTextPrefix = formattedNumber ? `${formattedNumber} ` : "";
+  const attestationIdentifier = toScalarString(data.attestation?.identifier ?? data.attestationIdentifier);
+  const pubTextPrefix = attestationIdentifier ? `${attestationIdentifier} ` : "";
   html = html.replaceAll("__PUB_TEXT_PART1__", `${pubTextPrefix}${pubText.part1 || ""}`);
   html = html.replaceAll("__PUB_TEXT_PART2__", pubText.part2 || "");
   html = html.replaceAll("__USER_FIRST_NAME__", he(data.userFirstName));
@@ -1878,48 +1956,71 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
     if (index === -1) return source;
     return source.slice(0, index) + replacement + source.slice(index + search.length);
   };
+  const toString = toScalarString;
+  const isDeleted = (user) => {
+    let raw = null;
+    if (user && typeof user === "object") {
+      raw = user.is_deleted ?? user.isDeleted ?? null;
+    }
+    if (raw === null || raw === undefined) return false;
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw === "number") return raw === 1;
+    const normalized = String(raw).trim().toLowerCase();
+    return ["1", "true", "yes", "y"].includes(normalized);
+  };
 
   const rawNumber = String(data.enterpriseNumber || "");
   const digits = rawNumber.replace(/\D/g, "");
   const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
 
-  const currentCompanyName = he(data.companyName || "");
-  const newCompanyName = he(data.newCompanyName || "");
-  const sigle = he(data.sigle || "");
+  const currentCompanyName = he(toString(data.companyName || ""));
+  const newCompanyName = he(toString(data.newCompanyName || ""));
+  const sigle = he(toString(data.sigle || ""));
 
   html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber));
   html = replaceOnce(html, "__COMPANY_NAME__", currentCompanyName);
   html = replaceOnce(html, "__COMPANY_NAME__", newCompanyName);
   html = replaceOnce(html, "__COMPANY_NAME__", sigle);
-  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm));
-  html = html.replaceAll("__CAPITAL_CURRENCY__", he(data.capitalCurrency || "EUR"));
-  html = html.replaceAll("__CAPITAL_AMOUNT__", he(data.capitalAmount || ""));
-  html = html.replaceAll("__FISCAL_YEAR_END_DAY__", he(data.fiscalYearEndDay || ""));
-  html = html.replaceAll("__FISCAL_YEAR_END_MONTH__", he(data.fiscalYearEndMonth || ""));
-  html = html.replaceAll("__ANNUAL_MEETING_MONTH__", he(data.annualMeetingMonth || ""));
-  html = html.replaceAll("__DATE_CONSTITUTION__", he(formatDateNumeric(data.dateConstitution || "")));
-  html = html.replaceAll("__ADDRESS__", he(data.companyAddress || ""));
-  html = html.replaceAll("__ADDR_STREET__", he(data.addrStreet || ""));
-  html = html.replaceAll("__ADDR_HOUSE_NUMBER__", he(data.addrHouseNumber || ""));
-  html = html.replaceAll("__ADDR_BOX__", he(data.addrBox || ""));
-  html = html.replaceAll("__ADDR_ZIPCODE__", he(data.addrZipcode || ""));
-  html = html.replaceAll("__ADDR_MUNICIPALITY__", he(data.addrMunicipality || ""));
-  html = html.replaceAll("__ADDR_COUNTRY__", he(data.addrCountry || "Belgique"));
+  html = html.replaceAll("__LEGAL_FORM__", he(toString(data.legalForm || "")));
+  html = html.replaceAll("__CAPITAL_CURRENCY__", he(toString(data.capitalCurrency || "")));
+  html = html.replaceAll("__CAPITAL_AMOUNT__", he(toString(data.capitalAmount || "")));
+  html = html.replaceAll("__FISCAL_YEAR_END_DAY__", he(toString(data.fiscalYearEndDay || "")));
+  html = html.replaceAll("__FISCAL_YEAR_END_MONTH__", he(toString(data.fiscalYearEndMonth || "")));
+  html = html.replaceAll("__ANNUAL_MEETING_MONTH__", he(toString(data.annualMeetingMonth || "")));
+  html = html.replaceAll("__DATE_CONSTITUTION__", he(formatDateNumeric(toString(data.dateConstitution || ""))));
+  html = html.replaceAll("__ADDRESS__", he(toString(data.companyAddress || "")));
+  html = html.replaceAll("__ADDR_STREET__", he(toString(data.addrStreet || "")));
+  html = html.replaceAll("__ADDR_HOUSE_NUMBER__", he(toString(data.addrHouseNumber || "")));
+  html = html.replaceAll("__ADDR_BOX__", he(toString(data.addrBox || "")));
+  html = html.replaceAll("__ADDR_ZIPCODE__", he(toString(data.addrZipcode || "")));
+  html = html.replaceAll("__ADDR_MUNICIPALITY__", he(toString(data.addrMunicipality || "")));
+  html = html.replaceAll("__ADDR_COUNTRY__", he(toString(data.addrCountry || "")));
   html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
   html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateNumeric(data.dateAssemblee || "")));
 
-  const users = data.users || [];
+  const users = Array.isArray(data.users)
+    ? data.users.filter((user) => {
+        const fn = toString(user?.function ?? user?.fonction ?? "");
+        if (String(fn).trim().toLowerCase() === "actionnaire") {
+          return false;
+        }
+        return !isDeleted(user);
+      })
+    : [];
   const assembleeDateStr = he(formatDateNumeric(data.dateAssemblee || ""));
   const checkboxCHtml = 'C <span class="xmark" style="left:-38px;">&#x2716;</span>';
   const checkboxNHtml = 'N <span class="xmark" style="left:-38px;">&#x2716;</span>';
   for (let i = 1; i <= 5; i++) {
     const u = users[i - 1] || {};
-    html = html.replaceAll(`__USER_${i}_NAME__`, he(u.name || ""));
-    html = html.replaceAll(`__USER_${i}_ID__`, he(u.idNumber || ""));
-    html = html.replaceAll(`__USER_${i}_FUNCTION__`, he(u.function || ""));
-    html = html.replaceAll(`__USER_${i}_DATE__`, u.name ? assembleeDateStr : "");
-    html = html.replaceAll(`__USER_${i}_CHECKBOX__`, u.name ? checkboxCHtml : "");
-    html = html.replaceAll(`__USER_${i}_NCHECKBOX__`, u.name ? checkboxNHtml : "");
+    const userName = toString(u.name ?? u.nom ?? "");
+    const userId = toString(u.idNumber ?? u.id_number ?? "");
+    const userFunction = toString(u.function ?? u.fonction ?? "");
+    html = html.replaceAll(`__USER_${i}_NAME__`, he(userName));
+    html = html.replaceAll(`__USER_${i}_ID__`, he(userId));
+    html = html.replaceAll(`__USER_${i}_FUNCTION__`, he(userFunction));
+    html = html.replaceAll(`__USER_${i}_DATE__`, userName ? assembleeDateStr : "");
+    html = html.replaceAll(`__USER_${i}_CHECKBOX__`, userName ? checkboxCHtml : "");
+    html = html.replaceAll(`__USER_${i}_NCHECKBOX__`, userName ? checkboxNHtml : "");
   }
 
   // Replace signatory pattern "__TOKEN__ __TOKEN__ agissant" with the depositaire name
@@ -2007,74 +2108,61 @@ async function buildAttestation1HtmlPage(data, autoprint = false) {
   }
   if (!templatePath) throw new Error("Template attestation1-template.html introuvable");
   let html = await fs.readFile(templatePath, "utf-8");
-  const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  const rawNumber = String(data.enterpriseNumber || "");
-  const digits = rawNumber.replace(/\D/g, "");
-  const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
-
-
-  const genderRaw = String(data.gender || "").trim().toLowerCase();
-  const salutation =
-    genderRaw === "m" || genderRaw === "male" || genderRaw === "homme" || genderRaw === "monsieur"
-      ? " Monsieur"
-      : genderRaw === "f" || genderRaw === "female" || genderRaw === "femme" || genderRaw === "madame"
-        ? " Madame"
-        : " Madame/Monsieur";
-  const checkboxChecked = "☒";
-  const checkboxEmpty = "□";
-  const services = data.services || {};
+  const he = escapeHtml;
   const attestation = data.attestation || {};
-  const pickValue = (...values) => {
-    for (const value of values) {
-      const normalized = String(value || "").trim();
-      if (normalized) return normalized;
+  const cleanAttestationValue = (value, fallback = "") => {
+    if (typeof value !== "string") {
+      return value ?? fallback;
     }
-    return "";
+    const normalized = String(value ?? "").trim();
+    if (
+      !normalized ||
+      normalized.toLowerCase().includes("_token_") ||
+      normalized.toLowerCase().includes("__token__") ||
+      /__+[A-Z0-9_]+__+/i.test(normalized)
+    ) {
+      return fallback;
+    }
+    return normalized;
   };
-  const normalizeFlag = (value) => {
-    if (value === undefined || value === null) return null;
-    if (typeof value === "boolean") return value;
-    const normalized = String(value).trim().toLowerCase();
-    if (!normalized) return null;
-    if (["1", "true", "yes", "oui", "on", "checked", "x", "☑"].includes(normalized)) return true;
-    if (["0", "false", "no", "non", "off"].includes(normalized)) return false;
-    return null;
+  const normalizedAttestation = { ...attestation };
+  for (const key of ["phone_number", "autre_modification_value", "agissant_societe", "agissant_societe_asbl", "qualite"]) {
+    if (Object.prototype.hasOwnProperty.call(attestation, key)) {
+      normalizedAttestation[key] = cleanAttestationValue(attestation[key], "");
+    }
+  }
+  const hasField = (key) =>
+    Object.prototype.hasOwnProperty.call(attestation, key) && attestation[key] !== null && attestation[key] !== undefined;
+  const checkboxChecked = "☑";
+  const checkboxEmpty = "☐";
+  const checkboxConstitution = hasField("constitution") ? checkboxChecked : checkboxEmpty;
+  const checkboxNomination = hasField("nomination") ? checkboxChecked : checkboxEmpty;
+  const checkboxDemission = hasField("demission") ? checkboxChecked : checkboxEmpty;
+  const checkboxTransfert = hasField("transfert") ? checkboxChecked : checkboxEmpty;
+  const checkboxAutre = hasField("autre_modification") ? checkboxChecked : checkboxEmpty;
+  const replaceTokenWithDots = (source, token, value) => {
+    const normalized = cleanAttestationValue(value, "");
+    if (normalized) {
+      const escaped = he(normalized);
+      const pattern = new RegExp(`${token}\\s*\\.{5,}`, "g");
+      return source.replace(pattern, escaped).replaceAll(token, escaped);
+    }
+    return source.replaceAll(token, "");
   };
-  const attestationFlags = {
-    constitution: normalizeFlag(attestation?.constitution),
-    nomination: normalizeFlag(attestation?.nomination),
-    demission: normalizeFlag(attestation?.demission),
-    transfert: normalizeFlag(attestation?.transfert),
-    autre: normalizeFlag(attestation?.autre_modification),
-  };
-  const checkboxConstitution = (attestationFlags.constitution ?? false) ? checkboxChecked : checkboxEmpty;
-  const checkboxNomination = (attestationFlags.nomination ?? services.dirigeants) ? checkboxChecked : checkboxEmpty;
-  const checkboxDemission = (attestationFlags.demission ?? services.dirigeants) ? checkboxChecked : checkboxEmpty;
-  const checkboxTransfert = (attestationFlags.transfert ?? services.addressChange) ? checkboxChecked : checkboxEmpty;
-  const checkboxAutre = (attestationFlags.autre ?? services.cessionParts) ? checkboxChecked : checkboxEmpty;
-
-  html = html.replaceAll("__SALUTATION__", he(salutation));
-  html = html.replaceAll("__FIRST_NAME__", he(data.firstName || ""));
-  html = html.replaceAll("__LAST_NAME__", he(data.lastName || ""));
-  html = html.replaceAll("__DATE_OF_BIRTH__", he(data.dateOfBirth || ""));
-  html = html.replaceAll("__PLACE_OF_BIRTH__", he(data.placeOfBirth || "............"));
-  html = html.replaceAll("__NATIONAL_ID__", he(data.nationalId || ""));
-  html = html.replaceAll("__ADDRESS_FULL__", he(data.addressFull || "............."));
-  html = html.replaceAll("__PHONE__", he(data.phone || data.gsm || ""));
-  html = html.replaceAll("__EMAIL__", he(data.email || data.userEmail || ""));
-  html = html.replaceAll("__COMPANY_NAME__", he(data.companyName || "........."));
-  html = html.replaceAll("__ENTERPRISE_NUMBER__", he(formattedNumber || ""));
-  html = html.replaceAll("__AGISSANT_SOCIETE__", he(pickValue(attestation?.agissant_societe, attestation?.agissantSociete, data.companyName)));
-  html = html.replaceAll("__AGISSANT_SOCIETE_ASBL__", he(pickValue(attestation?.agissant_societe_asbl, attestation?.agissantSocieteAsbl, data.companyName)));
-  html = html.replaceAll("__OTHER_MODIFICATION__", he(pickValue(attestation?.autre_modification_value, attestation?.autreModificationValue)));
-  html = html.replaceAll("__LEGAL_FORM__", he(data.legalForm || ""));
-  html = html.replaceAll("__FUNCTION__", he(data.depositaireFunction || ""));
-  html = html.replaceAll("__FAIT_A__", he(data.faitA || ""));
-  html = html.replaceAll("__DATE_ASSEMBLEE__", he(formatDateNumeric(data.dateAssemblee || "")));
-  html = html.replaceAll("__CHECKBOX_DIRIGEANTS__", services.dirigeants ? checkboxChecked : checkboxEmpty);
-  html = html.replaceAll("__CHECKBOX_CESSION__", services.cessionParts ? checkboxChecked : checkboxEmpty);
-  html = html.replaceAll("__CHECKBOX_ADDRESS__", services.addressChange ? checkboxChecked : checkboxEmpty);
+  const fallbackName = "………………………………………………………………………………………";
+  const fullName = cleanAttestationValue(normalizedAttestation.company_name ?? "", "");
+  html = html.replaceAll("__FIRST_NAME__", he(fullName || fallbackName));
+  html = html.replaceAll("__LAST_NAME__", "");
+  html = replaceTokenWithDots(html, "__DATE_OF_BIRTH__", normalizedAttestation?.company_names?.[0]?.start_date);
+  html = replaceTokenWithDots(html, "__PLACE_OF_BIRTH__", normalizedAttestation?.addresses?.[0]?.municipality);
+  html = replaceTokenWithDots(html, "__NATIONAL_ID__", normalizedAttestation?.identifier);
+  html = replaceTokenWithDots(html, "__ADDRESS_FULL__", normalizedAttestation?.domicilie);
+  html = replaceTokenWithDots(html, "__PHONE__", normalizedAttestation?.phone_number);
+  html = replaceTokenWithDots(html, "__AGISSANT_SOCIETE__", normalizedAttestation?.agissant_societe);
+  html = replaceTokenWithDots(html, "__AGISSANT_SOCIETE_ASBL__", normalizedAttestation?.agissant_societe_asbl);
+  html = replaceTokenWithDots(html, "__FUNCTION__", normalizedAttestation?.qualite);
+  html = replaceTokenWithDots(html, "__OTHER_MODIFICATION__", normalizedAttestation?.autre_modification_value);
+  html = replaceTokenWithDots(html, "__DATE_ASSEMBLEE__", normalizedAttestation?.en_date_du);
   html = html.replaceAll("__CHECKBOX_CONSTITUTION__", checkboxConstitution);
   html = html.replaceAll("__CHECKBOX_NOMINATION__", checkboxNomination);
   html = html.replaceAll("__CHECKBOX_DEMISSION__", checkboxDemission);
@@ -2121,89 +2209,101 @@ async function buildDeclarationHtmlPage(data, autoprint = false) {
   return html;
 }
 
-function buildPvAssembleeGeneraleText(data) {
-  const dateAssembleeRaw = data.dateAssemblee || data.changeDate || "";
-  const dateAssemblee = formatDateFr(dateAssembleeRaw);
-  const changeDate = formatDateFr(data.changeDate || "");
-  const companyName = data.companyName || "........";
-  const lieu = data.faitA || "";
+function buildPvAssembleeGeneraleHtmlPage(data, autoprint = false) {
+  const lang = String(data.lang || "fr").toLowerCase();
+  const demandeLang = String(data.demandeLang || lang).toLowerCase();
+  const meetingDate = formatDateLong(data.dateAssemblee || data.changeDate || "", demandeLang);
+  const formJuridique = escapeHtml(data.formJuridique || "");
+  const denomination = escapeHtml(data.denomination || "");
+  const street = escapeHtml(data.street || "");
+  const houseNumber = escapeHtml(data.houseNumber || "");
+  const zipcode = escapeHtml(data.zipcode || "");
+  const municipality = escapeHtml(data.municipality || "");
   const services = data.services || {};
-
-  const agendaItems = [];
-  if (services.cessionParts) agendaItems.push("Cession de parts");
-  if (services.addressChange) agendaItems.push("Transfert de siège social");
-  if (services.dirigeants) {
-    agendaItems.push("Démission de l'administrateur");
-    agendaItems.push("Nomination de l'administrateur");
-  }
-  if (agendaItems.length === 0) {
-    agendaItems.push("Modifications statutaires");
-  }
-
-  const lines = [];
-  lines.push(`Procès-verbal de l'assemblée générale extraordinaire du ${dateAssemblee || ".........."}`);
-  lines.push("");
-  lines.push(`${agendaItems.join(", ")}.`);
-  lines.push("");
-  const meetingLine = `L'assemblée générale extraordinaire de la société ${companyName} a été réunie${lieu ? ` à ${lieu}` : ""} le ${dateAssemblee}.`;
-  lines.push(meetingLine.trim());
-
-  const participants = (data.participants || []).filter(Boolean);
-  if (participants.length > 0) {
-    lines.push("");
-    lines.push("En présence de :");
-    participants.forEach((participant) => {
-      lines.push(`- ${participant}`);
-    });
-  }
-
-  lines.push("");
-  lines.push("L'ordre du jour :");
-  agendaItems.forEach((item) => {
-    lines.push(`- ${item}`);
-  });
-
-  lines.push("");
-  lines.push("Résolutions :");
-  let section = 1;
+  const parts = [];
   if (services.cessionParts) {
-    lines.push(`${section}. Cession de parts`);
-    lines.push("La cession de parts est approuvée conformément aux informations communiquées.");
-    lines.push("");
-    section += 1;
+    parts.push(demandeLang === "nl" ? "Overdracht van aandelen" : "Cession de parts");
   }
-  if (services.addressChange && data.newAddress) {
-    lines.push(`${section}. Transfert de siège social`);
-    lines.push(`Le siège social est transféré à ${data.newAddress}${changeDate ? `, avec effet au ${changeDate}` : ""}.`);
-    lines.push("");
-    section += 1;
+  if (services.addressChange) {
+    parts.push(demandeLang === "nl" ? "Zetelverplaatsing" : "Transfert de siège social");
   }
   if (services.dirigeants) {
-    lines.push(`${section}. Démission de l'administrateur`);
-    lines.push("Les démissions éventuelles sont actées conformément aux informations communiquées.");
-    lines.push("");
-    section += 1;
-    lines.push(`${section}. Nomination de l'administrateur`);
-    lines.push("Les nominations éventuelles sont actées conformément aux informations communiquées.");
-    lines.push("");
+    parts.push(demandeLang === "nl" ? "Ontslag en benoeming van bestuurder" : "Démission et nomination d’administrateur");
   }
-  if (section === 1) {
-    lines.push("Les résolutions prévues ont été adoptées.");
-    lines.push("");
-  }
+  const servicesTitle = parts.length > 0 ? `<h3>${escapeHtml(parts.join(", "))}</h3>` : "";
+  const pubTextRaw = String(data.pubText || "");
+  const pubTextHtml = escapeHtml(pubTextRaw).replace(/\r\n|\r|\n/g, "<br>");
+  const dirigeants = Array.isArray(data.dirigeants) ? data.dirigeants : [];
+  const dirigeantsHtml = dirigeants
+    .map((dirigeant) => {
+      const givenName = escapeHtml(dirigeant?.givenName || "");
+      const surname = escapeHtml(dirigeant?.surname || "");
+      const roleLabel = demandeLang === "nl" ? "Bestuurder" : "Administrateur";
+      return `        <div class="text-center">
+            <div>
+                ${givenName} ${surname}<br>
+                ${roleLabel}
+            </div>
+            <div></div>
+        </div>`;
+    })
+    .join("");
+  const meetingTitle =
+    demandeLang === "nl"
+      ? `Proces-verbaal van de buitengewone algemene vergadering van ${meetingDate}`
+      : `Procès-verbal de l’assemblée générale extraordinaire du ${meetingDate}`;
+  const autoprintScript = autoprint ? "\n<script>window.print();</script>" : "";
+  let html = `<!DOCTYPE html>
+<html lang="__LANG__">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/favicon_new.ico">
 
-  lines.push("L'ordre du jour étant épuisé, la séance est levée.");
+    <title>Legakte</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }
+        h1, h2, h3 { text-align: center; }
+        .signature { margin-top: 60px; display: flex; justify-content: space-between; }
+        .signature div { text-align: center; }
+    </style>
+</head>
+<body>
+    <p>
+        __FORM_JURIDIQUE__
+        « __DENOMINATION__ »<br>
+        __STREET__
+        __HOUSE_NUMBER__<br>
+        __ZIPCODE__
+        __MUNICIPALITY__
+    </p>
 
-  const signataires = (data.signataires || []).filter(Boolean);
-  if (signataires.length > 0) {
-    lines.push("");
-    lines.push("Signatures :");
-    signataires.forEach((signataire) => {
-      lines.push(`- ${signataire}`);
-    });
-  }
+    <h3>
+        __MEETING_TITLE__
+    </h3>
 
-  return lines.join("\n");
+    __SERVICES_TITLE__
+
+    <p>__PUB_TEXT__</p>
+
+<div class="signature d-flex justify-content-between">
+__DIRIGEANTS__
+</div>
+</body>__AUTOPRINT_SCRIPT__
+
+</html>`;
+  html = html.replaceAll("__LANG__", lang || "fr");
+  html = html.replaceAll("__FORM_JURIDIQUE__", formJuridique);
+  html = html.replaceAll("__DENOMINATION__", denomination);
+  html = html.replaceAll("__STREET__", street);
+  html = html.replaceAll("__HOUSE_NUMBER__", houseNumber);
+  html = html.replaceAll("__ZIPCODE__", zipcode);
+  html = html.replaceAll("__MUNICIPALITY__", municipality);
+  html = html.replaceAll("__MEETING_TITLE__", escapeHtml(meetingTitle));
+  html = html.replaceAll("__SERVICES_TITLE__", servicesTitle);
+  html = html.replaceAll("__PUB_TEXT__", pubTextHtml);
+  html = html.replaceAll("__DIRIGEANTS__", dirigeantsHtml);
+  html = html.replaceAll("__AUTOPRINT_SCRIPT__", autoprintScript);
+  return html;
 }
 
 function drawWrappedOnPage(page, font, text, x, y, fontSize, maxWidth, maxLines = 2) {
@@ -2399,28 +2499,38 @@ async function buildDossierDocument(documentKey, body) {
 
   const lang = companyData?.lang_entre || "fr";
   const docLang = String(body?.file_language || lang).toLowerCase();
-  const companyName =
+  const companyNameDisplay =
     safeValue(companyData?.company_name, "") ||
-    safeValue(readDescriptionValue(companyData?.denomination?.[0]?.description, docLang), "") ||
-    "Non renseigne";
-  const enterpriseNumber = safeValue(companyData?.number, "Non renseigne");
-  const legalForm =
+    safeValue(readDescriptionValue(companyData?.denomination?.[0]?.description, docLang), "");
+  const enterpriseNumberDisplay = safeValue(companyData?.number, "");
+  const legalFormDisplay =
     readDescriptionValue(companyData?.enterprise?.legalFormDescriptions, docLang) ||
-    translateLegalForm(safeValue(companyData?.enterprise?.legalForm, "") || safeValue(companyData?.legalForm, "") || safeValue(companyData?.juridicalForm, "") || safeValue(companyData?.juridicalSituation?.legalForm, ""), docLang) ||
-    "Non renseigne";
-  const companyAddress =
+    translateLegalForm(
+      safeValue(companyData?.enterprise?.legalForm, "") ||
+        safeValue(companyData?.legalForm, "") ||
+        safeValue(companyData?.juridicalForm, "") ||
+        safeValue(companyData?.juridicalSituation?.legalForm, ""),
+      docLang
+    );
+  const companyAddressDisplay =
     safeValue(companyData?.address, "") ||
-    safeValue(companyData?.addresses?.[0]?.full, "") ||
-    "Non renseignee";
+    safeValue(companyData?.addresses?.[0]?.full, "");
+  const companyName = safeValue(companyNameDisplay, "Non renseigne");
+  const enterpriseNumber = safeValue(enterpriseNumberDisplay, "Non renseigne");
+  const legalForm = safeValue(legalFormDisplay, "Non renseigne");
+  const companyAddress = safeValue(companyAddressDisplay, "Non renseignee");
   const status = safeValue(companyData?.juridicalSituation?.status?.description?.[0]?.value, "Non renseigne");
-  const changeDate = safeValue(addressInfo?.dateChangement, "Non renseignee");
-  const agDate = safeValue(addressInfo?.dateAssembleeGenerale, "Non renseignee");
+  const changeDateDisplay = safeValue(addressInfo?.dateChangement, "");
+  const agDateDisplay = safeValue(addressInfo?.dateAssembleeGenerale, "");
+  const changeDate = safeValue(changeDateDisplay, "Non renseignee");
+  const agDate = safeValue(agDateDisplay, "Non renseignee");
   const newStreet = `${String(addressInfo?.rue || "").trim()} ${String(addressInfo?.numero || "").trim()}`.trim();
   const newBox = String(addressInfo?.boite || "").trim();
   const newPostal = String(addressInfo?.codePostal || "").trim();
   const newCity = String(addressInfo?.commune || "").trim();
   const newAddressLine = `${newStreet}${newBox ? ` boite ${newBox}` : ""}`.trim();
-  const newAddress = `${newAddressLine} - ${newPostal} ${newCity}`.trim() || "Non renseignee";
+  const newAddressDisplay = `${newAddressLine} - ${newPostal} ${newCity}`.trim();
+  const newAddress = safeValue(newAddressDisplay, "Non renseignee");
   const depositaireName = pickDepositaireName(depositaire);
   const depositaireFunction = safeValue(
     depositaire?.dirigeant?.function || depositaire?.dirigeant?.role || depositaire?.role,
@@ -2432,6 +2542,22 @@ async function buildDossierDocument(documentKey, body) {
   const pack = safeValue(payment?.pack?.slug, "Non renseigne");
   const credits = safeValue(payment?.pack?.credits, "0");
   const fileTimestamp = formatNowForFileName();
+  const attestationInput =
+    (body?.attestation && typeof body.attestation === "object" ? body.attestation : null) ||
+    (body?.attestation_data && typeof body.attestation_data === "object" ? body.attestation_data : null) ||
+    (body?.attestationData && typeof body.attestationData === "object" ? body.attestationData : null) ||
+    {};
+  const attestationData =
+    attestationInput?.data && typeof attestationInput.data === "object" ? attestationInput.data : {};
+  const attestationForForms = { ...attestationData, ...attestationInput };
+  delete attestationForForms.data;
+  if (!attestationForForms.company_name && companyNameDisplay) {
+    attestationForForms.company_name = companyNameDisplay;
+  }
+  if (!attestationForForms.identifier && enterpriseNumberDisplay) {
+    attestationForForms.identifier = enterpriseNumberDisplay;
+  }
+  const attestationForIdentity = Object.keys(attestationData).length ? attestationData : attestationForForms;
 
   const header = [
     "Aktly Lite - Document pre-rempli",
@@ -2463,49 +2589,38 @@ async function buildDossierDocument(documentKey, body) {
   };
 
   if (documentKey === "formulaire1entr") {
+    const defaultCountry = lang === "nl" ? "België" : "Belgique";
     let address = companyData?.addresses?.[0] || {};
     // Fallback: if postalCode/municipality missing, parse from full address string
-    if (!address.postalCode && !address.municipality && companyAddress && companyAddress !== "Non renseignee") {
-      const parsed = parseAddressParts(companyAddress);
+    if (!address.postalCode && !address.municipality && companyAddressDisplay) {
+      const parsed = parseAddressParts(companyAddressDisplay);
       address = {
         street: address.street || parsed.street,
         houseNumber: address.houseNumber || parsed.houseNumber,
         box: address.box || parsed.box,
         postalCode: parsed.postalCode,
         municipality: parsed.municipality,
-        country: address.country || parsed.country || "Belgique",
+        country: address.country || parsed.country || defaultCountry,
       };
     }
-    const pubText = body?.pub_text || null;
-    let normalizedPubText = {};
-    if (typeof pubText === "string" && pubText.trim()) {
-      normalizedPubText = { part1: pubText };
-    } else if (pubText && typeof pubText === "object") {
-      for (const key of ["part1", "part2", "part3", "part4"]) {
-        if (pubText[key]) normalizedPubText[key] = String(pubText[key]);
-      }
-      if (Object.keys(normalizedPubText).length === 0 && Object.keys(pubText).length > 0) {
-        normalizedPubText.part1 = Object.values(pubText).filter(Boolean).join(" ");
-      }
+    if (!address.country) {
+      address.country = defaultCountry;
     }
+    const pubText = body?.pub_text ?? null;
 
     const services = {
       cessionParts: Boolean(body?.cession_parts_service),
-      addressChange: Boolean(body?.address_service) || Boolean(addressInfo?.rue),
+      addressChange: Boolean(body?.address_service),
       dirigeants: Boolean(body?.dirigeants_service),
     };
-    // Default to addressChange if no service specified but we have address info
-    if (!services.cessionParts && !services.addressChange && !services.dirigeants && (addressInfo?.rue || addressInfo?.commune)) {
-      services.addressChange = true;
-    }
 
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
-    const dateForPv = agDate !== "Non renseignee" ? agDate : changeDate;
+    const dateForPv = agDateDisplay || changeDateDisplay;
 
     const htmlContent = await buildFormulaire1HtmlPage({
-      enterpriseNumber,
-      companyName,
-      legalForm,
+      enterpriseNumber: enterpriseNumberDisplay,
+      companyName: companyNameDisplay,
+      legalForm: legalFormDisplay,
       address: {
         street: address.street || "",
         houseNumber: address.houseNumber || "",
@@ -2519,7 +2634,8 @@ async function buildDossierDocument(documentKey, body) {
         postalCode: newPostal,
         municipality: newCity,
       },
-      pubText: Object.keys(normalizedPubText).length > 0 ? normalizedPubText : null,
+      pubText,
+      attestation: attestationForForms,
       services,
       userFirstName: String(depositaire?.dirigeant?.given_name || user?.given_name || "").trim(),
       userLastName: String(depositaire?.dirigeant?.nom || user?.nom || user?.name || "").trim(),
@@ -2539,12 +2655,11 @@ async function buildDossierDocument(documentKey, body) {
 
   if (documentKey === "formulaire2entr") {
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
-    const attestation = body?.attestation || body?.attestation_data || body?.attestationData || {};
-    const attestationData = attestation?.data || {};
-    const demandeAddress = body?.demande?.address || body?.demande?.adresse || {};
+    const demandeAddress = addressInfo || {};
+    const defaultCountry = lang === "nl" ? "België" : "Belgique";
     const pickValue = (...values) => {
       for (const value of values) {
-        const normalized = String(value || "").trim();
+        const normalized = toScalarString(value).trim();
         if (normalized) return normalized;
       }
       return "";
@@ -2562,29 +2677,29 @@ async function buildDossierDocument(documentKey, body) {
     }
 
     const htmlContent = await buildFormulaire2HtmlPage({
-      enterpriseNumber,
-      companyName,
-      newCompanyName: pickValue(attestation?.company_name, attestation?.companyName, attestationData?.company_name, attestationData?.companyName),
-      sigle: pickValue(attestation?.sigle, attestationData?.sigle),
-      legalForm,
-      companyAddress,
-      addrStreet: pickValue(demandeAddress?.rue, demandeAddress?.street, companyData?.addresses?.[0]?.street),
-      addrHouseNumber: pickValue(demandeAddress?.numero, demandeAddress?.houseNumber, companyData?.addresses?.[0]?.houseNumber),
-      addrBox: pickValue(demandeAddress?.box, demandeAddress?.boite, companyData?.addresses?.[0]?.box),
-      addrZipcode: pickValue(demandeAddress?.zip_code, demandeAddress?.postalCode, companyData?.addresses?.[0]?.postalCode),
-      addrMunicipality: pickValue(demandeAddress?.localite, demandeAddress?.municipality, companyData?.addresses?.[0]?.municipality),
-      addrCountry: pickValue(demandeAddress?.pays, demandeAddress?.country, companyData?.addresses?.[0]?.country, "Belgique"),
-      branchStreet: pickValue(attestation?.rue2, attestation?.street2),
-      branchHouseNumber: pickValue(attestation?.n2, attestation?.numero2, attestation?.houseNumber2),
-      branchBox: pickValue(attestation?.boite2, attestation?.box2),
-      branchZipcode: pickValue(attestation?.code_postal2, attestation?.postalCode2, attestation?.zip_code2),
-      branchMunicipality: pickValue(attestation?.localite2, attestation?.municipality2),
-      cessationName1: pickValue(attestation?.identifier),
-      cessationNumber1: pickValue(attestationData?.nom),
-      cessationName2: pickValue(attestationData?.nom),
-      cessationNumber2: pickValue(attestationData?.nom),
-      cessationName3: pickValue(attestationData?.nom),
-      cessationNumber3: pickValue(attestationData?.nom),
+      enterpriseNumber: enterpriseNumberDisplay,
+      companyName: companyNameDisplay,
+      newCompanyName: pickValue(attestationForForms?.company_name, attestationForForms?.companyName),
+      sigle: pickValue(attestationForForms?.sigle),
+      legalForm: legalFormDisplay,
+      companyAddress: companyAddressDisplay,
+      addrStreet: pickValue(demandeAddress?.rue, demandeAddress?.street),
+      addrHouseNumber: pickValue(demandeAddress?.numero, demandeAddress?.houseNumber),
+      addrBox: pickValue(demandeAddress?.box, demandeAddress?.boite),
+      addrZipcode: pickValue(demandeAddress?.zip_code, demandeAddress?.postalCode, demandeAddress?.codePostal),
+      addrMunicipality: pickValue(demandeAddress?.localite, demandeAddress?.municipality, demandeAddress?.commune),
+      addrCountry: pickValue(demandeAddress?.pays, demandeAddress?.country, defaultCountry),
+      branchStreet: pickValue(attestationForForms?.rue2, attestationForForms?.street2),
+      branchHouseNumber: pickValue(attestationForForms?.n2, attestationForForms?.numero2, attestationForForms?.houseNumber2),
+      branchBox: pickValue(attestationForForms?.boite2, attestationForForms?.box2),
+      branchZipcode: pickValue(attestationForForms?.code_postal2, attestationForForms?.postalCode2, attestationForForms?.zip_code2),
+      branchMunicipality: pickValue(attestationForForms?.localite2, attestationForForms?.municipality2),
+      cessationName1: "",
+      cessationNumber1: "",
+      cessationName2: "",
+      cessationNumber2: "",
+      cessationName3: "",
+      cessationNumber3: "",
       capitalCurrency: String(capital?.currency || "EUR"),
       capitalAmount: String(capital?.amount || ""),
       fiscalYearEndDay: String(financialData?.fiscalYearEndDay || ""),
@@ -2592,7 +2707,7 @@ async function buildDossierDocument(documentKey, body) {
       annualMeetingMonth: String(financialData?.annualMeetingMonth || ""),
       dateConstitution: String(companyData?.enterprise?.startDate || ""),
       faitA: newCity || String(addressInfo?.commune || "").trim(),
-      dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
+      dateAssemblee: agDateDisplay || changeDateDisplay,
       depositaireName,
       signatoryName: depositaireName,
       userEmail: String(user?.email || ""),
@@ -2609,7 +2724,6 @@ async function buildDossierDocument(documentKey, body) {
 
   if (documentKey === "attestation-identite") {
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
-    const attestation = body?.attestation || body?.attestation_data || body?.attestationData || {};
     // Utiliser la même logique de fallback que les autres documents
     const lang = companyData?.lang_entre || "fr";
     const docLang = String(body?.file_language || lang).toLowerCase();
@@ -2663,11 +2777,11 @@ async function buildDossierDocument(documentKey, body) {
     );
     const services = {
       cessionParts: Boolean(body?.cession_parts_service),
-      addressChange: Boolean(body?.address_service) || Boolean(addressInfo?.rue),
+      addressChange: Boolean(body?.address_service),
       dirigeants: Boolean(body?.dirigeants_service),
     };
     const faitAValue = newCity || String(addressInfo?.commune || "").trim();
-    const dateAssembleeValue = agDate !== "Non renseignee" ? agDate : changeDate;
+    const dateAssembleeValue = agDateDisplay || changeDateDisplay;
 
     const htmlContent = await buildAttestation1HtmlPage({
       enterpriseNumber: normalizedEnterpriseNumber,
@@ -2686,7 +2800,7 @@ async function buildDossierDocument(documentKey, body) {
       services,
       faitA: faitAValue,
       dateAssemblee: dateAssembleeValue,
-      attestation,
+      attestation: attestationForIdentity,
       autoprint,
     });
 
@@ -2698,34 +2812,74 @@ async function buildDossierDocument(documentKey, body) {
   }
 
   if (documentKey === "pv-assemblee-generale") {
+    let address = companyData?.addresses?.[0] || {};
+    if (!address.street && companyAddressDisplay) {
+      const parsed = parseAddressParts(companyAddressDisplay);
+      address = {
+        street: address.street || parsed.street,
+        houseNumber: address.houseNumber || parsed.houseNumber,
+        postalCode: address.postalCode || parsed.postalCode,
+        municipality: address.municipality || parsed.municipality,
+      };
+    }
     const dirigeants = (body?.dirigeants || depositaire?.dirigeants || []).map((d) => ({
-      name: String(d?.name || d?.nom || `${d?.given_name || ""} ${d?.family_name || d?.nom || ""}`.trim() || "").trim(),
+      givenName: String(d?.givenName || d?.given_name || d?.prenom || d?.firstName || "").trim(),
+      surname: String(d?.surname || d?.family_name || d?.nom || d?.lastName || "").trim(),
     }));
     if (dirigeants.length === 0 && depositaireName) {
-      dirigeants.push({ name: depositaireName });
+      const parts = depositaireName.split(" ").filter(Boolean);
+      dirigeants.push({
+        givenName: parts.shift() || depositaireName,
+        surname: parts.join(" "),
+      });
     }
     const services = {
       cessionParts: Boolean(body?.cession_parts_service),
-      addressChange: Boolean(body?.address_service) || Boolean(addressInfo?.rue),
+      addressChange: Boolean(body?.address_service),
       dirigeants: Boolean(body?.dirigeants_service),
     };
-    const participants = dirigeants.map((d) => d.name).filter(Boolean);
-    const signataires = [depositaireName, ...participants].filter(Boolean);
-    const pvText = buildPvAssembleeGeneraleText({
-      companyName,
-      dateAssemblee: agDate !== "Non renseignee" ? agDate : changeDate,
-      changeDate,
-      newAddress,
-      faitA: newCity || String(addressInfo?.commune || "").trim(),
-      services,
-      participants,
-      signataires,
-    });
+    const pubTextRaw = body?.pub_text;
+    let pvPubText = "";
+    if (typeof pubTextRaw === "string") {
+      pvPubText = pubTextRaw;
+    } else if (pubTextRaw && typeof pubTextRaw === "object") {
+      const parts = [];
+      for (const key of ["part1", "part2", "part3", "part4"]) {
+        if (pubTextRaw[key]) {
+          parts.push(toScalarString(pubTextRaw[key]));
+        }
+      }
+      if (parts.length === 0) {
+        const fallback = toScalarString(pubTextRaw);
+        if (fallback) {
+          parts.push(fallback);
+        }
+      }
+      pvPubText = parts.filter(Boolean).join("\n");
+    }
+    const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
+    const pvHtml = buildPvAssembleeGeneraleHtmlPage(
+      {
+        lang,
+        demandeLang: body?.langue_entreprise || companyData?.langue_entreprise || docLang,
+        formJuridique: legalFormDisplay,
+        denomination: companyNameDisplay,
+        street: address.street || "",
+        houseNumber: address.houseNumber || "",
+        zipcode: address.postalCode || "",
+        municipality: address.municipality || "",
+        dateAssemblee: agDateDisplay || changeDateDisplay,
+        services,
+        pubText: pvPubText,
+        dirigeants,
+      },
+      autoprint
+    );
 
     return {
-      fileName: `pv-assemblee-generale-${fileTimestamp}.txt`,
-      mimeType: "text/plain; charset=utf-8",
-      content: Buffer.from(pvText, "utf-8"),
+      fileName: `pv-assemblee-generale-${fileTimestamp}.html`,
+      mimeType: "text/html; charset=utf-8",
+      content: Buffer.from(pvHtml, "utf-8"),
     };
   }
 
