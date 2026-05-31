@@ -1629,7 +1629,7 @@ async function resolveHtmlTemplatePath(styleFolder, fileName) {
 /** Format a date string "YYYY-MM-DD" to "D mois YYYY" in French */
 function formatDateFr(dateStr) {
   if (!dateStr) return "";
-  const months = ["janvier","fÃ©vrier","mars","avril","mai","juin","juillet","aoÃ»t","septembre","octobre","novembre","dÃ©cembre"];
+  const months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
   const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) {
     const day = parseInt(m[3], 10);
@@ -2927,85 +2927,78 @@ function buildFormulaire1Html(demande) {
   const bce = parseBceForPv(demande.bce_data || {});
   const pdfFields = demande.pdf_fields || {};
   const entNum = demande.enterprise_number || '';
-  const address = [bce.street, bce.houseNumber, bce.zipcode, bce.municipality].filter(Boolean).join(', ');
-  const services = [];
-  if (pdfFields.cession_parts_service == 1) services.push('Cession de parts');
-  if (pdfFields.address_service == 1) services.push('Transfert de si\u00e8ge social');
-  if (pdfFields.dirigeants_service == 1) services.push('D\u00e9mission / Nomination d\u2019administrateur');
-  const dirigeantRows = (bce.dirigeants || []).map(d =>
-    `<tr><td>${esc(d.givenName)} ${esc(d.surname)}</td><td>${esc(d.func || 'Administrateur')}</td></tr>`
+
+  // Address: "Rue X 10, Commune 1000 Belgique"
+  const addrParts = [bce.street, bce.houseNumber].filter(Boolean).join(' ');
+  const cityParts = [bce.municipality, bce.zipcode, 'Belgique'].filter(Boolean).join(' ');
+  const address = [addrParts, cityParts].filter(Boolean).join(', ');
+
+  // Build "Objet de l'acte" service list like original formulaire1.blade.php
+  const actions = [];
+  if (pdfFields.cession_parts_service == 1) actions.push('cession de parts');
+  if (pdfFields.address_service == 1) actions.push('transfert de si\u00e8ge social');
+  if (pdfFields.dirigeants_service == 1) {
+    actions.push('d\u00e9mission administrateur');
+    actions.push('nomination d\u2019administrateur');
+  }
+  let objet = '';
+  if (actions.length > 0) {
+    const last = actions.length > 1 ? actions.pop() : '';
+    objet = actions.join(', ') + (last ? ' et ' + last : '');
+    objet = objet.charAt(0).toUpperCase() + objet.slice(1);
+  }
+
+  // PV text - pub_text may be {part1,part2,...} or plain string
+  let pvRaw = demande.pub_text || demande.pv_text || '';
+  if (typeof pvRaw === 'object' && pvRaw !== null) {
+    pvRaw = Object.values(pvRaw).filter(Boolean).join('\n');
+  }
+  const pvText = esc(String(pvRaw)).replace(/\n/g, '<br>');
+
+  // Intro line: "N? PV de l'AG du DATE"
+  const pvIntro = `${esc(entNum)}&nbsp;&nbsp;<strong>Proc\u00e8s-verbal de l\u2019assembl\u00e9e g\u00e9n\u00e9rale extraordinaire du</strong> ${esc(formatDateFr(demande.date_assemblee))}`;
+
+  // Signatures
+  const sigsHtml = (bce.dirigeants || []).map(d =>
+    `<p style="margin:4px 0;">- <strong>${esc(d.givenName)} ${esc(d.surname)}</strong></p>`
   ).join('');
-  const pvText = esc(demande.pub_text || demande.pv_text || '').replace(/\n/g, '<br>');
+
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Formulaire de d\u00e9p\u00f4t - Acte de personne morale</title>
+  <title>Formulaire I</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; font-size: 12pt; }
-    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-    td, th { border: 1px solid #999; padding: 6px 10px; }
-    th { background: #f0f0f0; font-weight: bold; }
-    .section { margin: 20px 0; }
-    h2 { font-size: 14pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-    h3 { font-size: 12pt; }
+    body { font-family: Arial, sans-serif; margin: 50px 60px; line-height: 1.7; font-size: 11pt; color: #222; }
+    .company-header { text-align: center; margin-bottom: 16px; border: 1px dashed #bbb; padding: 12px; }
+    .company-header p { margin: 2px 0; }
+    .objet { font-weight: bold; text-decoration: underline; margin: 18px 0 6px 0; }
+    .pv-intro { margin: 6px 0 12px 22px; }
+    .pv-body { margin: 0 0 16px 0; }
+    .signatures { margin-top: 30px; }
     @media print { .no-print { display: none; } }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h2>GREFFE DES PERSONNES MORALES</h2>
-    <p>Formule I - Modification d&apos;une personne morale</p>
+  <div class="company-header">
+    <p>N\u00b0 d\u2019entreprise&nbsp;: ${esc(entNum)}</p>
+    <p><strong>Nom</strong></p>
+    <p>(en entier)&nbsp;: ${esc(bce.denomination)}</p>
+    <p>(en abr\u00e9g\u00e9)&nbsp;: ${esc(bce.denomination)}</p>
+    <p>Forme l\u00e9gale&nbsp;: &nbsp;&nbsp;${esc(bce.formJuridique)}</p>
+    <p style="text-align:left;">Adresse compl\u00e8te du si\u00e8ge&nbsp;: ${esc(address)}</p>
   </div>
-  <div class="section">
-    <h2>Identification de la soci\u00e9t\u00e9</h2>
-    <table>
-      <tr><th>Num\u00e9ro d&apos;entreprise</th><td>${esc(entNum)}</td></tr>
-      <tr><th>D\u00e9nomination</th><td>${esc(bce.denomination)}</td></tr>
-      <tr><th>Forme juridique</th><td>${esc(bce.formJuridique)}</td></tr>
-      <tr><th>Si\u00e8ge social</th><td>${esc(address)}</td></tr>
-    </table>
-  </div>
-  <div class="section">
-    <h2>Administrateurs / Dirigeants</h2>
-    <table>
-      <tr><th>Nom &amp; Pr\u00e9nom</th><th>Qualit\u00e9</th></tr>
-      ${dirigeantRows || '<tr><td colspan="2">?</td></tr>'}
-    </table>
-  </div>
-  <div class="section">
-    <h2>Objet de la publication</h2>
-    <table>
-      ${services.map(s => `<tr><td>\u2611 ${esc(s)}</td></tr>`).join('')}
-    </table>
-  </div>
-  <div class="section">
-    <h2>Texte de la publication</h2>
-    <p>${pvText}</p>
-  </div>
-  <div class="section">
-    <h2>D\u00e9posant</h2>
-    <table>
-      <tr><th>Nom</th><td>${esc(demande.depositaire_name || '')}</td></tr>
-      <tr><th>Email</th><td>${esc(demande.depositaire_email || '')}</td></tr>
-      <tr><th>T\u00e9l\u00e9phone</th><td>${esc(demande.depositaire_phone || '')}</td></tr>
-      <tr><th>Profession</th><td>${esc(demande.depositaire_profession || '')}</td></tr>
-    </table>
-  </div>
-  <div class="section" style="margin-top:60px;">
-    <table>
-      <tr>
-        <td style="width:50%;text-align:center;border:none;">Fait \u00e0 ${esc(demande.fait_a || '')}<br>Le ${esc(formatDateFr(demande.date_assemblee))}<br><br><br>___________________<br>Signature</td>
-        <td style="width:50%;text-align:center;border:none;"></td>
-      </tr>
-    </table>
+  <p class="objet">Objet de l\u2019acte&nbsp;: ${esc(objet)}</p>
+  <p class="pv-intro">${pvIntro}</p>
+  <div class="pv-body">${pvText}</div>
+  <div class="signatures">
+    <p><strong>Signatures&nbsp;:</strong></p>
+    ${sigsHtml || '<p>-</p>'}
   </div>
 </body>
 <script>window.print();</script>
 </html>`;
 }
-
 function buildFormulaire2Html(demande) {
   const bce = parseBceForPv(demande.bce_data || {});
   const pdfFields = demande.pdf_fields || {};
