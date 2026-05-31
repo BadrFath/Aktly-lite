@@ -16,6 +16,8 @@ function LegacyFinishPage({ uiLanguage = 'fr' }) {
         title: 'Dossier succesvol aangemaakt!',
         subtitle: 'Uw dossier is met succes verwerkt.',
         demandeLabel: 'Aanvraag-ID',
+        downloadPv: 'Proces-verbaal downloaden (PDF)',
+        downloadExtrait: 'Uittreksel downloaden (PDF)',
         newDossier: 'Nieuw dossier aanmaken',
         dashboard: 'Terug naar dashboard',
       }
@@ -23,6 +25,8 @@ function LegacyFinishPage({ uiLanguage = 'fr' }) {
         title: 'Dossier cree avec succes!',
         subtitle: 'Votre dossier a ete traite avec succes.',
         demandeLabel: 'ID de la demande',
+        downloadPv: 'Telecharger le PV (PDF)',
+        downloadExtrait: "Telecharger l'extrait (PDF)",
         newDossier: 'Creer un nouveau dossier',
         dashboard: 'Retour au tableau de bord',
       }
@@ -30,6 +34,11 @@ function LegacyFinishPage({ uiLanguage = 'fr' }) {
   const onNewDossier = () => {
     legacySessionKeys.forEach((k) => sessionStorage.removeItem(k))
     navigate('/legacy/step1')
+  }
+
+  const downloadDoc = (type) => {
+    if (!demandeId || demandeId === '—') return
+    window.open('/api/legacy-proxy/demandes/' + demandeId + '/download/' + type, '_blank')
   }
 
   return (
@@ -58,7 +67,32 @@ function LegacyFinishPage({ uiLanguage = 'fr' }) {
           <p className="mt-1 text-lg font-mono font-semibold text-emerald-300">{demandeId}</p>
         </div>
 
-        <div className="mt-8 flex flex-col gap-3">
+        {demandeId !== '—' && (
+          <div className="mt-6 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => downloadDoc('pv')}
+              className="flex items-center justify-center gap-2 w-full rounded-xl border border-blue-500/50 bg-blue-500/10 px-6 py-3 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20 hover:border-blue-400"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+              {t.downloadPv}
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadDoc('extrait')}
+              className="flex items-center justify-center gap-2 w-full rounded-xl border border-purple-500/50 bg-purple-500/10 px-6 py-3 text-sm font-semibold text-purple-300 transition hover:bg-purple-500/20 hover:border-purple-400"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+              {t.downloadExtrait}
+            </button>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-col gap-3">
           <button
             type="button"
             onClick={onNewDossier}

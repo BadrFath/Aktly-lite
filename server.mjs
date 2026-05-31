@@ -4011,6 +4011,25 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        if (method === "GET" && (subPath === "download/pv" || subPath === "download/extrait")) {
+          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+          const d = demandes[idx];
+          const isPv = subPath === "download/pv";
+          const rawText = isPv ? (d.pv_text || "") : (d.extrait_text || "");
+          const docTitle = isPv
+            ? "Proces-verbal de l'assemblee generale extraordinaire"
+            : "Extrait du proces-verbal de l'assemblee generale";
+          const baseId = d.enterprise_number || d.id;
+          const fileName = isPv ? ("pv-assemblee-" + baseId + ".pdf") : ("extrait-" + baseId + ".pdf");
+          const textToUse = rawText || buildPvTextTemplate(d);
+          const pdfBuf = await createPdfDocumentFromText(docTitle, textToUse);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+          res.end(pdfBuf);
+          return;
+        }
+
         sendJson(res, 404, { message: "Route legacy inconnue." });
         return;
       }
