@@ -8,9 +8,59 @@ import DepositairePage from './pages/DepositairePage'
 import FinalDossierPage from './pages/FinalDossierPage'
 import StripePage from './pages/StripePage'
 import StripeResultPage from './pages/StripeResultPage'
+import LegacyStep1Page from './pages/legacy/LegacyStep1Page'
+import LegacyStep1ValidatePage from './pages/legacy/LegacyStep1ValidatePage'
+import LegacyStep2Page from './pages/legacy/LegacyStep2Page'
+import LegacyStep3Page from './pages/legacy/LegacyStep3Page'
+import LegacyStep4Page from './pages/legacy/LegacyStep4Page'
+import LegacyStep5Page from './pages/legacy/LegacyStep5Page'
+import LegacyStep6Page from './pages/legacy/LegacyStep6Page'
+import LegacyFinishPage from './pages/legacy/LegacyFinishPage'
+import LegacyBuyCreditsPage from './pages/legacy/LegacyBuyCreditsPage'
 
 const navRoutes = ['/stripe', '/company', '/depositaire', '/adresse-info', '/dossier-final']
+const legacyNavRoutes = [
+  '/legacy/step1', '/legacy/step1-validate', '/legacy/step2',
+  '/legacy/step3', '/legacy/step4', '/legacy/step5',
+]
+const legacySessionKeys = [
+  'demande_id', 'missing_fields_data', 'entreprise_number',
+  'ia_text_pv', 'ia_text_extrait', 'depositaire_api_disabled', 'depositaire_fallback',
+]
 const privilegedEmails = new Set(['badrfath16@gmail.com', 'contact@legakte.be'])
+const dossierResetKeys = [
+  'aktly_payment',
+  'aktly_payment_verified',
+  'aktly_company_data',
+  'aktly_depositaire',
+  'aktly_address_info',
+  'aktly_documents_lang',
+  'aktly_veriff_url',
+  'aktly_veriff_notification',
+  'aktly_step_2',
+  'aktly_step_3',
+  'aktly_step_4',
+  'aktly_step_5',
+]
+
+const buildLegacyNavItems = (uiLanguage) =>
+  uiLanguage === 'nl'
+    ? [
+        { to: '/legacy/step1', label: '1. Bedrijf zoeken' },
+        { to: '/legacy/step1-validate', label: '2. Bedrijfsdetails' },
+        { to: '/legacy/step2', label: '3. Bewaarder' },
+        { to: '/legacy/step3', label: '4. Data & plaats' },
+        { to: '/legacy/step4', label: '5. PV (IA)' },
+        { to: '/legacy/step5', label: '6. Uittreksel (IA)' },
+      ]
+    : [
+        { to: '/legacy/step1', label: '1. Recherche entreprise' },
+        { to: '/legacy/step1-validate', label: '2. Details entreprise' },
+        { to: '/legacy/step2', label: '3. Depositaire' },
+        { to: '/legacy/step3', label: '4. Dates & lieu' },
+        { to: '/legacy/step4', label: '5. PV (IA)' },
+        { to: '/legacy/step5', label: '6. Extrait (IA)' },
+      ]
 
 const buildNavItems = (uiLanguage) =>
   uiLanguage === 'nl'
@@ -36,6 +86,7 @@ function AppLayout() {
   const navigate = useNavigate()
   const currentStep = getStepIndex(location.pathname)
   const isAuthPage = location.pathname === '/auth'
+  const isLegacyRoute = location.pathname.startsWith('/legacy/')
   const [uiLanguage, setUiLanguage] = useState(localStorage.getItem('aktly_ui_language') || 'fr')
   const [showFilesLangPrompt, setShowFilesLangPrompt] = useState(false)
   const [filesLanguage, setFilesLanguage] = useState(localStorage.getItem('aktly_files_language') || 'fr')
@@ -44,12 +95,15 @@ function AppLayout() {
     localStorage.getItem('aktly_privileged_access') === 'true',
   )
   const navItems = buildNavItems(uiLanguage)
+  const legacyNavItems = buildLegacyNavItems(uiLanguage)
   const t = uiLanguage === 'nl'
     ? {
         secureLogin: 'Veilige login',
-        flowTitle: '5-stappen traject (auth buiten traject)',
+        flowTitle: isLegacyRoute ? 'Legacy 6-stappen traject' : '5-stappen traject (auth buiten traject)',
         uiLanguage: 'UI-taal',
         logout: 'Afmelden',
+        createFolder: isLegacyRoute ? 'Dossier aanmaken' : 'Dossier aanmaken',
+        buyCredits: 'Credits kopen',
         step2Tag: 'Stap 2',
         filesLangTitle: 'Bestandstaal kiezen',
         filesLangDesc: 'Deze taal bepaalt de bestanden die later worden gegenereerd.',
@@ -57,9 +111,11 @@ function AppLayout() {
       }
     : {
         secureLogin: 'Connexion securisee',
-        flowTitle: 'Parcours 5 etapes (auth hors parcours)',
+        flowTitle: isLegacyRoute ? 'Parcours legacy 6 etapes' : 'Parcours 5 etapes (auth hors parcours)',
         uiLanguage: 'Langue UI',
         logout: 'Deconnexion',
+        createFolder: 'Creer un dossier',
+        buyCredits: 'Acheter des credits',
         step2Tag: 'Etape 2',
         filesLangTitle: 'Choisir la langue des fichiers',
         filesLangDesc: 'Cette langue controle les fichiers generes par la suite.',
@@ -151,6 +207,16 @@ function AppLayout() {
     navigate('/auth')
   }
 
+  const onCreateFolder = () => {
+    if (isLegacyRoute) {
+      legacySessionKeys.forEach((key) => sessionStorage.removeItem(key))
+      navigate('/legacy/step1')
+    } else {
+      dossierResetKeys.forEach((key) => localStorage.removeItem(key))
+      navigate('/stripe')
+    }
+  }
+
   const onChangeUiLanguage = (event) => {
     const next = event.target.value
     setUiLanguage(next)
@@ -191,27 +257,59 @@ function AppLayout() {
           {!isAuthPage && (
             <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:flex-1">
               <nav className="flex flex-wrap gap-2">
-              {navItems.map((item, index) => {
-                const active = location.pathname === item.to
-                const done = currentStep > index
+              <button
+                type="button"
+                onClick={onCreateFolder}
+                className="step-pill inline-flex items-center gap-2 rounded-full border border-slate-600 bg-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-emerald-300/60 hover:text-emerald-100"
+              >
+                <span aria-hidden="true">+</span>
+                {t.createFolder}
+              </button>
+              {isLegacyRoute
+                ? legacyNavItems.map((item) => {
+                    const active = location.pathname === item.to
+                    const itemIdx = legacyNavRoutes.findIndex((r) => r === item.to)
+                    const currentLegacyIdx = legacyNavRoutes.findIndex((r) => r === location.pathname)
+                    const done = currentLegacyIdx > itemIdx
 
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    onClick={(event) => onStepClick(event, item.to)}
-                    className={`step-pill rounded-full border px-3 py-1.5 text-sm transition ${
-                      active
-                        ? 'border-emerald-300 bg-emerald-300/15 text-emerald-200'
-                        : done
-                          ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-200'
-                          : 'border-slate-600 text-slate-300 hover:border-emerald-300/60 hover:text-emerald-100'
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                )
-              })}
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        className={`step-pill rounded-full border px-3 py-1.5 text-sm transition ${
+                          active
+                            ? 'border-emerald-300 bg-emerald-300/15 text-emerald-200'
+                            : done
+                              ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-200'
+                              : 'border-slate-600 text-slate-300 hover:border-emerald-300/60 hover:text-emerald-100'
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    )
+                  })
+                : navItems.map((item, index) => {
+                    const active = location.pathname === item.to
+                    const done = currentStep > index
+
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={(event) => onStepClick(event, item.to)}
+                        className={`step-pill rounded-full border px-3 py-1.5 text-sm transition ${
+                          active
+                            ? 'border-emerald-300 bg-emerald-300/15 text-emerald-200'
+                            : done
+                              ? 'border-cyan-300/40 bg-cyan-300/10 text-cyan-200'
+                              : 'border-slate-600 text-slate-300 hover:border-emerald-300/60 hover:text-emerald-100'
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    )
+                  })
+              }
               </nav>
               <label className="ml-auto flex items-center gap-2 rounded-full border border-slate-600 px-3 py-1.5 text-xs text-slate-200">
                 <span>{t.uiLanguage}</span>
@@ -254,6 +352,15 @@ function AppLayout() {
               <Route path="/depositaire" element={<DepositairePage uiLanguage={uiLanguage} />} />
               <Route path="/adresse-info" element={<AddressInfoPage uiLanguage={uiLanguage} />} />
               <Route path="/dossier-final" element={<FinalDossierPage privilegedAccess={privilegedAccess} uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/step1" element={<LegacyStep1Page uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/step1-validate" element={<LegacyStep1ValidatePage uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/step2" element={<LegacyStep2Page uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/step3" element={<LegacyStep3Page uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/step4" element={<LegacyStep4Page uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/step5" element={<LegacyStep5Page uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/step6" element={<LegacyStep6Page uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/finish" element={<LegacyFinishPage uiLanguage={uiLanguage} />} />
+              <Route path="/legacy/buy-credits" element={<LegacyBuyCreditsPage uiLanguage={uiLanguage} />} />
             </Routes>
           </motion.div>
         </AnimatePresence>
