@@ -1,8 +1,18 @@
-import { motion } from 'framer-motion'
+﻿import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cardReveal, pageContainer } from '../../lib/motionPresets'
 import { legacyGet, legacyPost } from '../../lib/legacyApi'
+
+function extractDesc(desc, lang) {
+  if (!desc) return ''
+  if (typeof desc === 'string') return desc
+  if (Array.isArray(desc)) {
+    const match = desc.find(d => d?.language === lang) ?? desc[0]
+    return match?.value ?? ''
+  }
+  return desc?.value ?? ''
+}
 
 function parseBceData(bceData) {
   if (!bceData) return {}
@@ -12,29 +22,33 @@ function parseBceData(bceData) {
     try { parsed = JSON.parse(bceData) } catch { return {} }
   }
 
-  // Company name
+  const lang = parsed?.lang_entre || 'fr'
+
   const denom = parsed?.denomination
   let name = ''
   if (Array.isArray(denom)) {
-    name = denom[0]?.description?.value ?? denom[0]?.description ?? ''
-  } else if (denom?.description) {
-    name = denom.description?.value ?? denom.description ?? ''
+    name = extractDesc(denom[0]?.description, lang)
+  } else if (denom) {
+    name = extractDesc(denom?.description, lang) || String(denom)
   }
 
-  // Enterprise number
-  const enterpriseNumber = parsed?.enterpriseNumber ?? parsed?.enterprise_number ?? ''
+  const enterpriseNumber = parsed?.enterpriseNumber ?? parsed?.enterprise_number ?? parsed?.number ?? ''
 
-  // Address
-  const addr = Array.isArray(parsed?.addresses) ? parsed.addresses[0] : parsed?.address ?? {}
-  const street = addr?.street?.description?.value ?? addr?.street?.description ?? addr?.streetDescription ?? ''
+  const addr = Array.isArray(parsed?.addresses)
+    ? parsed.addresses[0]
+    : (typeof parsed?.address === 'object' && parsed?.address !== null ? parsed.address : {})
+  const fullAddress = addr?.full ?? (typeof parsed?.address === 'string' ? parsed.address : '')
+  if (fullAddress) return { name, enterpriseNumber, address: fullAddress }
+
+  const street = addr?.street ?? ''
   const house = addr?.houseNumber ?? addr?.house_number ?? ''
   const box = addr?.box ?? ''
-  const zip = addr?.zipcode ?? addr?.zipCode ?? ''
-  const muni = addr?.municipality?.description?.value ?? addr?.municipality?.description ?? addr?.municipalityDescription ?? ''
-  const country = addr?.country?.description?.value ?? addr?.country?.description ?? addr?.countryDescription ?? ''
+  const zip = addr?.postalCode ?? addr?.zipcode ?? addr?.zipCode ?? ''
+  const muni = addr?.municipality ?? ''
+  const country = addr?.country ?? ''
 
   const addressParts = [
-    street && house ? `${street} ${house}${box ? ` bte ${box}` : ''}` : street,
+    street && house ? (street + ' ' + house + (box ? ' bte ' + box : '')) : street,
     [zip, muni].filter(Boolean).join(' '),
     country,
   ].filter(Boolean)
@@ -157,7 +171,7 @@ function Row({ label, value }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</span>
-      <span className="text-sm text-slate-200">{value || '—'}</span>
+      <span className="text-sm text-slate-200">{value || 'â€”'}</span>
     </div>
   )
 }
