@@ -32,7 +32,7 @@ const stripePaymentLinkRuntime = (
   process.env.VITE_STRIPE_PAYMENT_LINK ||
   ""
 ).trim();
-const legacyApiBaseUrl = (process.env.LEGACY_API_BASE_URL || "https://demande.legakte.be/api").trim().replace(/\/$/, "");
+const legacyApiBaseUrl = (process.env.LEGACY_API_BASE_URL || "http://127.0.0.1:8000/api").trim().replace(/\/$/, "");
 const bceSoapServiceUrl = (process.env.BCE_SOAP_URL || "https://kbopub.economie.fgov.be/kbopubws110000/services/wsKBOPub").trim();
 const bceSoapAction = (process.env.BCE_SOAP_ACTION || "http://fgov.economie.be/kbopub/ReadEnterprise").trim();
 const bceWsUsername = (process.env.BCE_WS_USERNAME || "wsop4830").trim();
