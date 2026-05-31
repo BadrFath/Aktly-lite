@@ -208,13 +208,8 @@ function AppLayout() {
   }
 
   const onCreateFolder = () => {
-    if (isLegacyRoute) {
-      legacySessionKeys.forEach((key) => sessionStorage.removeItem(key))
-      navigate('/legacy/step1')
-    } else {
-      dossierResetKeys.forEach((key) => localStorage.removeItem(key))
-      navigate('/stripe')
-    }
+    legacySessionKeys.forEach((key) => sessionStorage.removeItem(key))
+    navigate('/legacy/step1')
   }
 
   const onChangeUiLanguage = (event) => {
