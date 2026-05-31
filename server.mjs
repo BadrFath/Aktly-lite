@@ -33,6 +33,9 @@ const stripePaymentLinkRuntime = (
   ""
 ).trim();
 const legacyApiBaseUrl = (process.env.LEGACY_API_BASE_URL || "http://127.0.0.1:8000/api").trim().replace(/\/$/, "");
+const legacyDemandesFile = path.join(dataDir, "legacy-demandes.json");
+const legacyDepositairesFile = path.join(dataDir, "legacy-depositaires.json");
+const openaiApiKey = (process.env.OPENAI_API_KEY || "").trim();
 const bceSoapServiceUrl = (process.env.BCE_SOAP_URL || "https://kbopub.economie.fgov.be/kbopubws110000/services/wsKBOPub").trim();
 const bceSoapAction = (process.env.BCE_SOAP_ACTION || "http://fgov.economie.be/kbopub/ReadEnterprise").trim();
 const bceWsUsername = (process.env.BCE_WS_USERNAME || "wsop4830").trim();
@@ -3400,6 +3403,171 @@ async function handleLocalLogin(req, res) {
   });
 }
 
+// ── Legacy API helpers ────────────────────────────────────────────────────
+
+async function ensureLegacyDemandesStore() {
+  await fs.mkdir(dataDir, { recursive: true });
+  try { await fs.access(legacyDemandesFile); } catch {
+    await fs.writeFile(legacyDemandesFile, "[]", "utf8");
+  }
+}
+
+async function readLegacyDemandes() {
+  await ensureLegacyDemandesStore();
+  const raw = await fs.readFile(legacyDemandesFile, "utf8");
+  const parsed = JSON.parse(raw);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+async function writeLegacyDemandes(list) {
+  await ensureLegacyDemandesStore();
+  await fs.writeFile(legacyDemandesFile, JSON.stringify(list, null, 2), "utf8");
+}
+
+async function ensureLegacyDepositairesStore() {
+  await fs.mkdir(dataDir, { recursive: true });
+  try { await fs.access(legacyDepositairesFile); } catch {
+    await fs.writeFile(legacyDepositairesFile, "[]", "utf8");
+  }
+}
+
+async function readLegacyDepositaires() {
+  await ensureLegacyDepositairesStore();
+  const raw = await fs.readFile(legacyDepositairesFile, "utf8");
+  const parsed = JSON.parse(raw);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+async function writeLegacyDepositaires(list) {
+  await ensureLegacyDepositairesStore();
+  await fs.writeFile(legacyDepositairesFile, JSON.stringify(list, null, 2), "utf8");
+}
+
+function parseMultipartFormData(buffer, contentType) {
+  const boundaryMatch = contentType.match(/boundary=([^\s;]+)/i);
+  if (!boundaryMatch) return {};
+  const boundary = boundaryMatch[1].replace(/^"(.*)"$/, "$1");
+  const result = {};
+  const bodyStr = buffer.toString("binary");
+  const parts = bodyStr.split(`--${boundary}`);
+  for (const part of parts) {
+    if (!part || part.startsWith("--")) continue;
+    const crlfIdx = part.indexOf("\r\n\r\n");
+    if (crlfIdx === -1) continue;
+    const headers = part.substring(0, crlfIdx);
+    const nameMatch = headers.match(/name="([^"]+)"/i);
+    if (!nameMatch || /filename=/i.test(headers)) continue;
+    const value = part.substring(crlfIdx + 4).replace(/\r\n$/, "");
+    result[nameMatch[1]] = value;
+  }
+  return result;
+}
+
+async function readRawBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
+async function generatePvTextWithAI(demande) {
+  if (!openaiApiKey) return null;
+  try {
+    const bce = demande.bce_data || {};
+    const lang = demande.langue || "fr";
+    const denomination = bce.denomination || "la societe";
+    const address = bce.address
+      ? `${bce.address.street} ${bce.address.houseNumber}${bce.address.box ? "/" + bce.address.box : ""}, ${bce.address.postalCode} ${bce.address.municipality}`
+      : "";
+    const prompt = lang === "nl"
+      ? `Schrijf een volledig processen-verbaal (PV) van de buitengewone algemene vergadering van ${denomination} (ondernemingsnummer: ${demande.enterprise_number}), gehouden te ${demande.fait_a || "..."} op ${demande.date_assemblee || "..."}, voor de verplaatsing van de maatschappelijke zetel. Datum van de wijziging: ${demande.date_changement || "..."}. Huidig adres: ${address}. Schrijf in formeel Belgisch juridisch Nederlands.`
+      : `Redige un proces-verbal complet (PV) de l'assemblee generale extraordinaire de ${denomination} (numero d'entreprise: ${demande.enterprise_number}), tenue a ${demande.fait_a || "..."} le ${demande.date_assemblee || "..."}, portant sur le transfert du siege social. Date de la modification: ${demande.date_changement || "..."}. Adresse actuelle: ${address}. Redige en francais juridique belge formel.`;
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiApiKey}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Tu es un juriste specialise en droit des societes belge. Tu rediges des documents juridiques formels." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.5,
+        max_tokens: 1500,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json().catch(() => null);
+    return data?.choices?.[0]?.message?.content ?? null;
+  } catch { return null; }
+}
+
+async function generateExtraitTextWithAI(demande) {
+  if (!openaiApiKey) return null;
+  try {
+    const bce = demande.bce_data || {};
+    const lang = demande.langue || "fr";
+    const denomination = bce.denomination || "la societe";
+    const pvText = demande.pv_text || "";
+    const prompt = lang === "nl"
+      ? `Schrijf een uittreksel uit het onderstaande PV voor publicatie in het Belgisch Staatsblad. Beknopt en formeel.\n\nPV:\n${pvText}`
+      : `Redige un extrait du PV ci-dessous pour publication au Moniteur belge. Concis et formel.\n\nPV:\n${pvText}`;
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiApiKey}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Tu es un juriste specialise en droit des societes belge. Tu rediges des documents juridiques formels." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.5,
+        max_tokens: 800,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json().catch(() => null);
+    return data?.choices?.[0]?.message?.content ?? null;
+  } catch { return null; }
+}
+
+function buildPvTextTemplate(demande) {
+  const bce = demande.bce_data || {};
+  const lang = demande.langue || "fr";
+  const denomination = bce.denomination || "LA SOCIETE";
+  const num = demande.enterprise_number || "";
+  const faitA = demande.fait_a || "...";
+  const dateAssemblee = demande.date_assemblee
+    ? new Date(demande.date_assemblee).toLocaleDateString(lang === "nl" ? "nl-BE" : "fr-BE", { day: "2-digit", month: "long", year: "numeric" })
+    : "...";
+  const dateChangement = demande.date_changement
+    ? new Date(demande.date_changement).toLocaleDateString(lang === "nl" ? "nl-BE" : "fr-BE", { day: "2-digit", month: "long", year: "numeric" })
+    : "...";
+  const address = bce.address
+    ? `${bce.address.street} ${bce.address.houseNumber}${bce.address.box ? "/" + bce.address.box : ""}, ${bce.address.postalCode} ${bce.address.municipality}`
+    : "...";
+  if (lang === "nl") {
+    return `PROCESSEN-VERBAAL VAN DE BUITENGEWONE ALGEMENE VERGADERING\nVAN ${denomination}\nOndernemingsnummer: ${num}\n\nGehouden te ${faitA}, op ${dateAssemblee}\n\nZijn verschenen alle vennoten of hun vertegenwoordigers.\n\nDe vergadering stelt vast dat alle vennoten aanwezig of vertegenwoordigd zijn, en besluit het volgende:\n\nBESLUIT\n\nDe buitengewone algemene vergadering besluit de maatschappelijke zetel van de vennootschap te verplaatsen, met ingang van ${dateChangement}.\n\nHuidig adres: ${address}\n\nDe raad van bestuur wordt belast met de uitvoering van dit besluit en met de neerlegging en bekendmaking ervan overeenkomstig de wettelijke voorschriften.\n\nOpgemaakt te ${faitA}, op ${dateAssemblee}.`;
+  }
+  return `PROCES-VERBAL DE L'ASSEMBLEE GENERALE EXTRAORDINAIRE\nDE ${denomination}\nNumero d'entreprise: ${num}\n\nTenue a ${faitA}, le ${dateAssemblee}\n\nTous les associes sont presents ou representes.\n\nL'assemblee constate que tous les associes sont presents ou representes et prend les resolutions suivantes:\n\nRESOLUTION\n\nL'assemblee generale extraordinaire decide de transferer le siege social de la societe, avec effet au ${dateChangement}.\n\nAdresse actuelle: ${address}\n\nLe conseil d'administration est charge de l'execution de la presente decision et de son depot et publication conformement aux dispositions legales applicables.\n\nFait a ${faitA}, le ${dateAssemblee}.`;
+}
+
+function buildExtraitTemplate(demande) {
+  const bce = demande.bce_data || {};
+  const lang = demande.langue || "fr";
+  const denomination = bce.denomination || "LA SOCIETE";
+  const num = demande.enterprise_number || "";
+  const faitA = demande.fait_a || "...";
+  const dateAssemblee = demande.date_assemblee
+    ? new Date(demande.date_assemblee).toLocaleDateString(lang === "nl" ? "nl-BE" : "fr-BE", { day: "2-digit", month: "long", year: "numeric" })
+    : "...";
+  const dateChangement = demande.date_changement
+    ? new Date(demande.date_changement).toLocaleDateString(lang === "nl" ? "nl-BE" : "fr-BE", { day: "2-digit", month: "long", year: "numeric" })
+    : "...";
+  if (lang === "nl") {
+    return `UITTREKSEL UIT HET PROCESSEN-VERBAAL\nVAN DE BUITENGEWONE ALGEMENE VERGADERING\nVAN ${denomination} (${num})\n\nVergadering gehouden te ${faitA} op ${dateAssemblee}\n\nDe buitengewone algemene vergadering heeft beslist de maatschappelijke zetel te verplaatsen, met ingang van ${dateChangement}.\n\nOpgemaakt te ${faitA}, op ${dateAssemblee}.`;
+  }
+  return `EXTRAIT DU PROCES-VERBAL\nDE L'ASSEMBLEE GENERALE EXTRAORDINAIRE\nDE ${denomination} (${num})\n\nAssemblee tenue a ${faitA} le ${dateAssemblee}\n\nL'assemblee generale extraordinaire a decide le transfert du siege social, avec effet au ${dateChangement}.\n\nFait a ${faitA}, le ${dateAssemblee}.`;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const method = req.method || "GET";
@@ -3653,39 +3821,211 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (requestPath.startsWith("/api/legacy-proxy/")) {
-      const upstreamPath = requestPath.replace("/api/legacy-proxy", "");
-      const queryString = req.url && req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-      const upstreamUrl = `${legacyApiBaseUrl}${upstreamPath}${queryString}`;
-      const authHeader = req.headers["authorization"] || "";
-      const contentType = req.headers["content-type"] || "";
+      const legacyPath = requestPath.replace("/api/legacy-proxy", "");
+      const legacyToken = extractAccessToken(req);
+      const legacySession = legacyToken ? await findAccessSession(legacyToken) : null;
 
-      try {
-        const chunks = [];
-        await new Promise((resolve, reject) => {
-          req.on("data", (chunk) => chunks.push(chunk));
-          req.on("end", resolve);
-          req.on("error", reject);
-        });
-        const body = chunks.length ? Buffer.concat(chunks) : null;
-
-        const upstreamHeaders = { Accept: "application/json" };
-        if (authHeader) upstreamHeaders["Authorization"] = authHeader;
-        if (body && contentType) upstreamHeaders["Content-Type"] = contentType;
-
-        const upstreamRes = await fetch(upstreamUrl, {
-          method,
-          headers: upstreamHeaders,
-          body: body && body.length > 0 ? body : undefined,
-        });
-
-        const responseBody = await upstreamRes.arrayBuffer();
-        res.statusCode = upstreamRes.status;
-        const upstreamContentType = upstreamRes.headers.get("content-type") || "application/json";
-        res.setHeader("Content-Type", upstreamContentType);
-        res.end(Buffer.from(responseBody));
-      } catch (err) {
-        sendJson(res, 502, { message: "Legacy API proxy error", details: String(err?.message || err) });
+      // GET /billing/subscription
+      if (method === "GET" && legacyPath === "/billing/subscription") {
+        if (!legacySession) { sendJson(res, 401, { message: "Non authentifie." }); return; }
+        sendJson(res, 200, { credits: legacySession.privileged ? 999 : 10, active_subscription: true, valid_coupon: false });
+        return;
       }
+
+      // POST /getEnterpriseByNumber
+      if (method === "POST" && legacyPath === "/getEnterpriseByNumber") {
+        const payload = await readJsonBody(req);
+        const enterpriseNumber = String(payload?.enterprise_number || "").replace(/\D/g, "");
+        const requestedLang = payload?.langue || "fr";
+        try {
+          const fromBce = await fetchBceSoapCompany(enterpriseNumber, requestedLang);
+          sendJson(res, 200, fromBce.company);
+        } catch (soapErr) {
+          try {
+            const pub = await fetchBcePublicCompany(enterpriseNumber, requestedLang);
+            if (pub) { sendJson(res, 200, pub); return; }
+          } catch {}
+          sendJson(res, 422, { message: "Entreprise introuvable.", details: String(soapErr?.message || soapErr) });
+        }
+        return;
+      }
+
+      // POST /demandes
+      if (method === "POST" && legacyPath === "/demandes") {
+        if (!legacySession) { sendJson(res, 401, { message: "Non authentifie." }); return; }
+        const payload = await readJsonBody(req);
+        const demandes = await readLegacyDemandes();
+        const newDemande = {
+          id: crypto.randomUUID(),
+          user_email: legacySession.email,
+          enterprise_number: payload.enterprise_number || "",
+          bce_data: payload.bce_data || {},
+          langue: payload.langue || "fr",
+          date_changement: "",
+          date_assemblee: "",
+          fait_a: "",
+          pv_text: "",
+          extrait_text: "",
+          pdf_fields: {},
+          progress: 25,
+          created_at: new Date().toISOString(),
+        };
+        demandes.push(newDemande);
+        if (demandes.length > 5000) demandes.splice(0, demandes.length - 5000);
+        await writeLegacyDemandes(demandes);
+        sendJson(res, 201, newDemande);
+        return;
+      }
+
+      // POST /depositaires
+      if (method === "POST" && legacyPath === "/depositaires") {
+        if (!legacySession) { sendJson(res, 401, { message: "Non authentifie." }); return; }
+        const rawBody = await readRawBody(req);
+        const ct = req.headers["content-type"] || "";
+        let fields;
+        if (ct.includes("multipart/form-data")) {
+          fields = parseMultipartFormData(rawBody, ct);
+        } else {
+          try { fields = JSON.parse(rawBody.toString("utf8")); } catch { fields = {}; }
+        }
+        const depositaires = await readLegacyDepositaires();
+        const demandeId = fields.demande_id || "";
+        const filtered = depositaires.filter((d) => d.demande_id !== demandeId);
+        const newDep = {
+          id: crypto.randomUUID(),
+          demande_id: demandeId,
+          type: fields.type || "comptable",
+          nom: fields.nom || "",
+          prenom: fields.prenom || "",
+          date_naissance: fields.date_naissance || "",
+          lieu_naissance: fields.lieu_naissance || "",
+          numero_registre_national: fields.numero_registre_national || "",
+          domicile: fields.domicile || "",
+          gsm: fields.gsm || "",
+          created_at: new Date().toISOString(),
+        };
+        filtered.push(newDep);
+        if (filtered.length > 5000) filtered.splice(0, filtered.length - 5000);
+        await writeLegacyDepositaires(filtered);
+        sendJson(res, 201, newDep);
+        return;
+      }
+
+      // GET /depositaires/:id
+      const depositaireIdMatch = legacyPath.match(/^\/depositaires\/([^/]+)$/);
+      if (method === "GET" && depositaireIdMatch) {
+        if (!legacySession) { sendJson(res, 401, { message: "Non authentifie." }); return; }
+        const queryId = depositaireIdMatch[1];
+        const depositaires = await readLegacyDepositaires();
+        const dep = depositaires.find((d) => d.id === queryId || d.demande_id === queryId);
+        if (!dep) { sendJson(res, 404, { message: "Depositaire introuvable." }); return; }
+        sendJson(res, 200, dep);
+        return;
+      }
+
+      // GET /getTextWithIA/:id
+      const pvIaMatch = legacyPath.match(/^\/getTextWithIA\/([^/]+)$/);
+      if (method === "GET" && pvIaMatch) {
+        if (!legacySession) { sendJson(res, 401, { message: "Non authentifie." }); return; }
+        const demandes = await readLegacyDemandes();
+        const demande = demandes.find((d) => d.id === pvIaMatch[1]);
+        if (!demande) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+        let text = await generatePvTextWithAI(demande);
+        if (!text) text = buildPvTextTemplate(demande);
+        sendJson(res, 200, { text });
+        return;
+      }
+
+      // GET /getExtraitTextWithIA/:id
+      const extraitIaMatch = legacyPath.match(/^\/getExtraitTextWithIA\/([^/]+)$/);
+      if (method === "GET" && extraitIaMatch) {
+        if (!legacySession) { sendJson(res, 401, { message: "Non authentifie." }); return; }
+        const demandes = await readLegacyDemandes();
+        const demande = demandes.find((d) => d.id === extraitIaMatch[1]);
+        if (!demande) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+        let text = await generateExtraitTextWithAI(demande);
+        if (!text) text = buildExtraitTemplate(demande);
+        sendJson(res, 200, { text });
+        return;
+      }
+
+      // demandes/:id sub-routes
+      const demandeIdMatch = legacyPath.match(/^\/demandes\/([^/]+)(\/(.+))?$/);
+      if (demandeIdMatch) {
+        if (!legacySession) { sendJson(res, 401, { message: "Non authentifie." }); return; }
+        const demandeId = demandeIdMatch[1];
+        const subPath = demandeIdMatch[3] || "";
+        const demandes = await readLegacyDemandes();
+        const idx = demandes.findIndex((d) => d.id === demandeId);
+
+        if (method === "GET" && !subPath) {
+          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+          sendJson(res, 200, demandes[idx]);
+          return;
+        }
+
+        if (method === "PUT" && !subPath) {
+          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+          const payload = await readJsonBody(req);
+          demandes[idx] = { ...demandes[idx], ...payload, id: demandeId };
+          await writeLegacyDemandes(demandes);
+          sendJson(res, 200, demandes[idx]);
+          return;
+        }
+
+        if (method === "POST" && subPath === "progress") {
+          if (idx !== -1) {
+            const payload = await readJsonBody(req);
+            demandes[idx].progress = Number(payload.progress || 0);
+            await writeLegacyDemandes(demandes);
+          }
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        if (method === "POST" && subPath === "text") {
+          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+          const payload = await readJsonBody(req);
+          demandes[idx].pv_text = payload.text || "";
+          await writeLegacyDemandes(demandes);
+          sendJson(res, 200, { ok: true, text: demandes[idx].pv_text });
+          return;
+        }
+
+        if (method === "POST" && subPath === "extraitText") {
+          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+          const payload = await readJsonBody(req);
+          demandes[idx].extrait_text = payload.text || "";
+          await writeLegacyDemandes(demandes);
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        if (method === "GET" && (subPath === "missing-pdf-fields" || subPath.startsWith("missing-pdf-fields"))) {
+          sendJson(res, 200, {});
+          return;
+        }
+
+        if (method === "GET" && subPath.startsWith("pdf-fields")) {
+          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+          sendJson(res, 200, demandes[idx].pdf_fields || {});
+          return;
+        }
+
+        if (method === "PUT" && subPath === "pdf-fields") {
+          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
+          const payload = await readJsonBody(req);
+          demandes[idx].pdf_fields = { ...demandes[idx].pdf_fields, ...(payload.fields || payload) };
+          await writeLegacyDemandes(demandes);
+          sendJson(res, 200, demandes[idx].pdf_fields);
+          return;
+        }
+
+        sendJson(res, 404, { message: "Route legacy inconnue." });
+        return;
+      }
+
+      sendJson(res, 404, { message: "Legacy route inconnue." });
       return;
     }
 
