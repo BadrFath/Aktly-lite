@@ -2816,7 +2816,8 @@ function buildPvAgHtml(demande) {
   const dateLabel = lang === 'nl'
     ? `Proces-verbaal van de buitengewone algemene vergadering van ${formatDateFr(demande.date_assemblee)}`
     : `Proc\u00e8s-verbal de l\u2019assembl\u00e9e g\u00e9n\u00e9rale extraordinaire du ${formatDateFr(demande.date_assemblee)}`;
-  const pvText = esc(demande.pub_text || demande.pv_text || '').replace(/\n/g, '<br>');
+  const pvRaw6 = demande.pub_text || demande.pv_text || buildPvTextTemplate(demande);
+  const pvText = (typeof pvRaw6 === 'object' && pvRaw6 !== null ? Object.values(pvRaw6).filter(Boolean).join('\n') : String(pvRaw6 || '')).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>');
   const signaturesHtml = (bce.dirigeants || []).map(d =>
     `<div class="sig-block"><div>${esc(d.givenName)} ${esc(d.surname)}<br>${lang === 'nl' ? 'Bestuurder' : 'Administrateur'}</div></div>`
   ).join('');
@@ -2941,6 +2942,11 @@ function buildFormulaire1Html(demande) {
     actions.push('d\u00e9mission administrateur');
     actions.push('nomination d\u2019administrateur');
   }
+  // Also check top-level demande fields if pdf_fields not set
+  if (!actions.length && demande.address_service) actions.push('transfert de siège social');
+  if (!actions.length && demande.cession_parts_service) actions.push('cession de parts');
+  if (!actions.length && demande.dirigeants_service) { actions.push('démission administrateur'); actions.push('nomination d’administrateur'); }
+  if (!actions.length) actions.push('transfert de siège social'); // default
   let objet = '';
   if (actions.length > 0) {
     const last = actions.length > 1 ? actions.pop() : '';
@@ -3786,8 +3792,15 @@ async function generatePvTextWithAI(demande) {
   try {
     const bce = demande.bce_data || {};
     const lang = demande.langue || "fr";
-    const denomination = bce.denomination || "la societe";
-    const address = bce.address
+    const rawDenomAI = bce.denomination;
+  let denomination = "la societe";
+  if (Array.isArray(rawDenomAI) && rawDenomAI[0] && rawDenomAI[0].description) {
+    const mAI = (rawDenomAI[0].description || []).find(d => d.language === lang) || rawDenomAI[0].description[0] || {};
+    denomination = mAI.value || "la societe";
+  } else if (typeof rawDenomAI === "string" && rawDenomAI) {
+    denomination = rawDenomAI;
+  }
+  const address = bce.address
       ? `${bce.address.street} ${bce.address.houseNumber}${bce.address.box ? "/" + bce.address.box : ""}, ${bce.address.postalCode} ${bce.address.municipality}`
       : "";
     const prompt = lang === "nl"
@@ -3844,7 +3857,14 @@ async function generateExtraitTextWithAI(demande) {
 function buildPvTextTemplate(demande) {
   const bce = demande.bce_data || {};
   const lang = demande.langue || "fr";
-  const denomination = bce.denomination || "LA SOCIETE";
+  const rawDenom = bce.denomination;
+  let denomination = "LA SOCIETE";
+  if (Array.isArray(rawDenom) && rawDenom[0] && rawDenom[0].description) {
+    const match = (rawDenom[0].description || []).find(d => d.language === lang) || rawDenom[0].description[0] || {};
+    denomination = match.value || "LA SOCIETE";
+  } else if (typeof rawDenom === "string" && rawDenom) {
+    denomination = rawDenom;
+  }
   const num = demande.enterprise_number || "";
   const faitA = demande.fait_a || "...";
   const dateAssemblee = demande.date_assemblee
@@ -3865,7 +3885,14 @@ function buildPvTextTemplate(demande) {
 function buildExtraitTemplate(demande) {
   const bce = demande.bce_data || {};
   const lang = demande.langue || "fr";
-  const denomination = bce.denomination || "LA SOCIETE";
+  const rawDenom3 = bce.denomination;
+  let denomination = "LA SOCIETE";
+  if (Array.isArray(rawDenom3) && rawDenom3[0] && rawDenom3[0].description) {
+    const match3 = (rawDenom3[0].description || []).find(d => d.language === lang) || rawDenom3[0].description[0] || {};
+    denomination = match3.value || "LA SOCIETE";
+  } else if (typeof rawDenom3 === "string" && rawDenom3) {
+    denomination = rawDenom3;
+  }
   const num = demande.enterprise_number || "";
   const faitA = demande.fait_a || "...";
   const dateAssemblee = demande.date_assemblee
@@ -4356,26 +4383,7 @@ const server = http.createServer(async (req, res) => {
         }
 
 
-        if (method === "GET" && subPath.startsWith("download/")) {
-          if (idx === -1) { sendJson(res, 404, { message: "Demande introuvable." }); return; }
-          const d = demandes[idx];
-          const docType = subPath.slice("download/".length);
-          let html = null;
-          if (docType === "pv") html = buildPvAgHtml(d);
-          else if (docType === "declaration") html = buildDeclarationHtml(d);
-          else if (docType === "attestation") html = buildAttestationHtml(d);
-          else if (docType === "formulaire1") html = buildFormulaire1Html(d);
-          else if (docType === "formulaire2") html = buildFormulaire2Html(d);
-          else if (docType === "extrait") html = buildExtraitHtml(d);
-          if (html) {
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            res.end(html);
-            return;
-          }
-          sendJson(res, 404, { message: 'Type de document inconnu.' });
-          return;
-        }
+      
 
 sendJson(res, 404, { message: "Route legacy inconnue." });
         return;
