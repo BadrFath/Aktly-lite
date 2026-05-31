@@ -1,4 +1,4 @@
-import http from "node:http";
+﻿import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
@@ -45,34 +45,34 @@ const bceCompanyCache = new Map();
 
 // Translation map for Belgian legal forms (fr <-> nl)
 const LEGAL_FORM_FR_TO_NL = {
-  "Société à responsabilité limitée": "Besloten Vennootschap",
+  "SociÃ©tÃ© Ã  responsabilitÃ© limitÃ©e": "Besloten Vennootschap",
   "SRL": "BV",
   "SPRL": "BVBA",
-  "Société Privée à Responsabilité Limitée": "Besloten Vennootschap met Beperkte Aansprakelijkheid",
-  "Société Anonyme": "Naamloze Vennootschap",
+  "SociÃ©tÃ© PrivÃ©e Ã  ResponsabilitÃ© LimitÃ©e": "Besloten Vennootschap met Beperkte Aansprakelijkheid",
+  "SociÃ©tÃ© Anonyme": "Naamloze Vennootschap",
   "SA": "NV",
-  "Société en commandite simple": "Gewone commanditaire vennootschap",
+  "SociÃ©tÃ© en commandite simple": "Gewone commanditaire vennootschap",
   "SCS": "CommV",
   "SComm": "CommV",
-  "Société en commandite par actions": "Commanditaire vennootschap op aandelen",
+  "SociÃ©tÃ© en commandite par actions": "Commanditaire vennootschap op aandelen",
   "SCA": "CVA",
-  "Société en nom collectif": "Vennootschap onder firma",
+  "SociÃ©tÃ© en nom collectif": "Vennootschap onder firma",
   "SNC": "VOF",
-  "Société coopérative": "Coöperatieve vennootschap",
+  "SociÃ©tÃ© coopÃ©rative": "CoÃ¶peratieve vennootschap",
   "SC": "CV",
   "Association sans but lucratif": "Vereniging zonder winstoogmerk",
   "ASBL": "VZW",
   "Association internationale sans but lucratif": "Internationale vereniging zonder winstoogmerk",
   "AISBL": "IVZW",
   "Fondation": "Stichting",
-  "Fondation privée": "Private stichting",
-  "Société de droit commun": "Maatschap",
+  "Fondation privÃ©e": "Private stichting",
+  "SociÃ©tÃ© de droit commun": "Maatschap",
   "Entreprise individuelle": "Eenmanszaak",
-  "Société agricole": "Landbouwvennootschap",
+  "SociÃ©tÃ© agricole": "Landbouwvennootschap",
   "SA": "NV",
-  "Groupement d'intérêt économique": "Economisch samenwerkingsverband",
+  "Groupement d'intÃ©rÃªt Ã©conomique": "Economisch samenwerkingsverband",
   "GIE": "ESV",
-  "Société européenne": "Europese vennootschap",
+  "SociÃ©tÃ© europÃ©enne": "Europese vennootschap",
   "SE": "SE",
 };
 const LEGAL_FORM_NL_TO_FR = Object.fromEntries(
@@ -100,7 +100,7 @@ const companyDirectoryFromAktlyMain = {
     status: "Actif",
     legalSituation: "Situation normale",
     typeOfEnterprise: "ELP",
-    legalForm: "Société à responsabilité limitée",
+    legalForm: "SociÃ©tÃ© Ã  responsabilitÃ© limitÃ©e",
     startDate: "2025-04-09",
     address: {
       street: "Avenue des Gerfauts",
@@ -451,9 +451,7 @@ function makeCompanyPayload(enterpriseNumber, langue) {
     },
     typeOfEnterprise: "ELP",
     juridicalSituation: {
-      status: {
-        description: [{ language: langue || "fr", value: status }],
-      },
+      status: status,
     },
   };
 }
@@ -677,9 +675,7 @@ function parseBceEnterpriseResponse(xml, enterpriseNumber, langue) {
       },
       typeOfEnterprise,
       juridicalSituation: {
-        status: {
-          description: [{ language: String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr", value: status }],
-        },
+        status: status,
       },
       source: "bce-soap",
     },
@@ -823,9 +819,7 @@ function mapAktlyMainCompanyPayload(enterpriseNumber, langue) {
     },
     typeOfEnterprise: source.typeOfEnterprise,
     juridicalSituation: {
-      status: {
-        description: [{ language: langue || "fr", value: source.status }],
-      },
+      status: source.status,
     },
     source: "aktly-main",
   };
@@ -951,7 +945,7 @@ function extractCompanyDenominationFromHtml(html) {
   }
 
   const rowMatch = source.match(
-    /<td[^>]*>\s*(?:D[ée]nomination|Denomination|Benaming|Naam)\s*:?\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i,
+    /<td[^>]*>\s*(?:D[Ã©e]nomination|Denomination|Benaming|Naam)\s*:?\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/i,
   );
   if (rowMatch?.[1]) {
     return cleanBceLines(htmlCellToText(rowMatch[1]))[0] || "";
@@ -1064,7 +1058,7 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
       }
 
       html = await response.text();
-      if (/<table|Ondernemingsnummer|Num[eé]ro d'entreprise|Benaming|D[eé]nomination/i.test(html)) {
+      if (/<table|Ondernemingsnummer|Num[eÃ©]ro d'entreprise|Benaming|D[eÃ©]nomination/i.test(html)) {
         break;
       }
     } catch (error) {
@@ -1078,13 +1072,13 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
 
   const rows = parseBceRows(html);
 
-  const numberRaw = pickRowValue(rows, ["Numero d'entreprise", "Numéro d'entreprise", "Ondernemingsnummer"]);
-  const denominationRaw = pickRowValue(rows, ["Denomination", "Dénomination", "Benaming", "Naam"]);
+  const numberRaw = pickRowValue(rows, ["Numero d'entreprise", "NumÃ©ro d'entreprise", "Ondernemingsnummer"]);
+  const denominationRaw = pickRowValue(rows, ["Denomination", "DÃ©nomination", "Benaming", "Naam"]);
   const statusRaw = pickRowValue(rows, ["Statut", "Status"]);
   const legalSituationRaw = pickRowValue(rows, ["Situation juridique", "Juridische situatie"]);
-  const startDateRaw = pickRowValue(rows, ["Date de debut", "Date de début", "Startdatum", "Begindatum", "Datum oprichting", "Ingeschreven sinds"]);
-  const legalFormRaw = pickRowValue(rows, ["Forme legale", "Forme légale", "Rechtsvorm"]);
-  const addressRaw = pickRowValue(rows, ["Adresse du siege", "Adresse du siège", "Adres van de zetel"]);
+  const startDateRaw = pickRowValue(rows, ["Date de debut", "Date de dÃ©but", "Startdatum", "Begindatum", "Datum oprichting", "Ingeschreven sinds"]);
+  const legalFormRaw = pickRowValue(rows, ["Forme legale", "Forme lÃ©gale", "Rechtsvorm"]);
+  const addressRaw = pickRowValue(rows, ["Adresse du siege", "Adresse du siÃ¨ge", "Adres van de zetel"]);
 
   const number = String(numberRaw || cleanNumber).replace(/\D+/g, "") || cleanNumber;
   const denomination =
@@ -1118,9 +1112,7 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
     },
     typeOfEnterprise: "ELP",
     juridicalSituation: {
-      status: {
-        description: [{ language: requestedLang, value: status }],
-      },
+      status: status,
     },
   };
 }
@@ -1151,7 +1143,7 @@ function parseBcePublicDirigeantsFromHtml(html, enterpriseNumber) {
     return [];
   }
   const rows = [];
-  const rolePattern = /(administrateur|bestuurder|g[ée]rant|zaakvoerder|mandataire|gedelegeerd|directeur)/i;
+  const rolePattern = /(administrateur|bestuurder|g[Ã©e]rant|zaakvoerder|mandataire|gedelegeerd|directeur)/i;
   const rowRegex = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<\/tr>/gi;
   let match;
 
@@ -1335,9 +1327,7 @@ function normalizeBnbCompanyPayload(raw, enterpriseNumber, langue) {
     addresses: [finalAddress],
     typeOfEnterprise: raw?.typeOfEnterprise || raw?.enterpriseType || "ELP",
     juridicalSituation: {
-      status: {
-        description: [{ language: langue || "fr", value: String(status) }],
-      },
+      status: status,
     },
     enterprise: {
       legalForm: raw?.enterprise?.legalForm || raw?.legalForm || raw?.juridicalForm || null,
@@ -1639,7 +1629,7 @@ async function resolveHtmlTemplatePath(styleFolder, fileName) {
 /** Format a date string "YYYY-MM-DD" to "D mois YYYY" in French */
 function formatDateFr(dateStr) {
   if (!dateStr) return "";
-  const months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  const months = ["janvier","fÃ©vrier","mars","avril","mai","juin","juillet","aoÃ»t","septembre","octobre","novembre","dÃ©cembre"];
   const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) {
     const day = parseInt(m[3], 10);
@@ -1754,7 +1744,7 @@ function wordwrapHtml(text, width, breakStr = "<br>") {
 }
 
 /**
- * Generate the publication text (procès-verbal) in plain text.
+ * Generate the publication text (procÃ¨s-verbal) in plain text.
  * Only includes sections that have data, following the legacy template.
  */
 function generatePubTextHtml(data) {
@@ -1872,7 +1862,7 @@ function generatePubTextHtml(data) {
     if (normalizedServiceLabels.some((label) => label.includes("siege") || label.includes("zetel"))) {
       normalizedServices.addressChange = true;
     }
-    if (normalizedServiceLabels.some((label) => label.includes("démission") || label.includes("ontslag"))) {
+    if (normalizedServiceLabels.some((label) => label.includes("dÃ©mission") || label.includes("ontslag"))) {
       normalizedServices.dirigeants = true;
     }
     if (normalizedServiceLabels.some((label) => label.includes("nomination") || label.includes("benoeming"))) {
@@ -1885,10 +1875,10 @@ function generatePubTextHtml(data) {
     serviceSummary.push(isNl ? "Cessie van aandelen" : "Cession de parts");
   }
   if (normalizedServices.addressChange) {
-    serviceSummary.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siège social");
+    serviceSummary.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siÃ¨ge social");
   }
   if (normalizedServices.dirigeants) {
-    serviceSummary.push(isNl ? "Ontslag en benoeming van bestuurder" : "Démission et nomination d’administrateur");
+    serviceSummary.push(isNl ? "Ontslag en benoeming van bestuurder" : "DÃ©mission et nomination dâ€™administrateur");
   }
 
   const orderItems = [];
@@ -1896,11 +1886,11 @@ function generatePubTextHtml(data) {
     orderItems.push(isNl ? "Cessie van aandelen" : "Cession de parts");
   }
   if (normalizedServices.addressChange) {
-    orderItems.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siège social");
+    orderItems.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siÃ¨ge social");
   }
   if (normalizedServices.dirigeants) {
-    orderItems.push(isNl ? "Ontslag van de bestuurder" : "Démission de l’administrateur");
-    orderItems.push(isNl ? "Benoeming van de bestuurder" : "Nomination de l’administrateur");
+    orderItems.push(isNl ? "Ontslag van de bestuurder" : "DÃ©mission de lâ€™administrateur");
+    orderItems.push(isNl ? "Benoeming van de bestuurder" : "Nomination de lâ€™administrateur");
   }
 
   const normalizedParticipants = normalizeParticipants(participants);
@@ -1920,7 +1910,7 @@ function generatePubTextHtml(data) {
     lines.push(
       isNl
         ? `Proces-verbaal van de buitengewone algemene vergadering van ${dateAg}`
-        : `Procès-verbal de l’assemblée générale extraordinaire du ${dateAg}`
+        : `ProcÃ¨s-verbal de lâ€™assemblÃ©e gÃ©nÃ©rale extraordinaire du ${dateAg}`
     );
     pushBlank();
   }
@@ -1943,9 +1933,9 @@ function generatePubTextHtml(data) {
       const details = [];
       if (lieu) details.push(`au ${lieu}`);
       if (dateAg) details.push(`le ${dateAg}`);
-      if (heureDebut) details.push(`à ${heureDebut}`);
+      if (heureDebut) details.push(`Ã  ${heureDebut}`);
       lines.push(
-        `L’assemblée générale extraordinaire de la société a été réunie${details.length ? " " + details.join(" ") : ""} en présence de :`
+        `Lâ€™assemblÃ©e gÃ©nÃ©rale extraordinaire de la sociÃ©tÃ© a Ã©tÃ© rÃ©unie${details.length ? " " + details.join(" ") : ""} en prÃ©sence de :`
       );
     }
     normalizedParticipants.forEach((participant) => lines.push(`- ${participant}`));
@@ -1956,7 +1946,7 @@ function generatePubTextHtml(data) {
     lines.push(
       isNl
         ? `Het volledige kapitaal is vertegenwoordigd (${capitalTotal} aandelen), de vergadering kan geldig beslissen over de agenda:`
-        : `L’ensemble du capital étant réuni (${capitalTotal} actions), l’assemblée peut valablement statuer sur l’ordre du jour :`
+        : `Lâ€™ensemble du capital Ã©tant rÃ©uni (${capitalTotal} actions), lâ€™assemblÃ©e peut valablement statuer sur lâ€™ordre du jour :`
     );
     orderItems.forEach((item) => lines.push(`- ${item}`));
     pushBlank();
@@ -1970,17 +1960,17 @@ function generatePubTextHtml(data) {
     nommes.length > 0;
 
   if (hasResolutions) {
-    lines.push(isNl ? "Besluiten:" : "Résolutions:");
+    lines.push(isNl ? "Besluiten:" : "RÃ©solutions:");
     pushBlank();
   }
 
   if (normalizedCessions.length > 0) {
-    lines.push(isNl ? "1. Cessie van aandelen" : "1. Cession d’actions");
+    lines.push(isNl ? "1. Cessie van aandelen" : "1. Cession dâ€™actions");
     normalizedCessions.forEach((cession) => {
       lines.push(
         isNl
           ? `- ${cession.cedant} draagt ${cession.quantite} aandelen over aan ${cession.acquereur}, die aanvaardt.`
-          : `- ${cession.cedant} cède ${cession.quantite} actions à ${cession.acquereur}, lequel/laquelle accepte.`
+          : `- ${cession.cedant} cÃ¨de ${cession.quantite} actions Ã  ${cession.acquereur}, lequel/laquelle accepte.`
       );
     });
     pushBlank();
@@ -1998,7 +1988,7 @@ function generatePubTextHtml(data) {
         if (!nom || !avant || !apres) return "";
         return isNl
           ? `${nom}: ${avant} aandelen voor de wijziging, ${apres} aandelen na de wijziging.`
-          : `${nom} : ${avant} actions avant modification, ${apres} actions après modification.`;
+          : `${nom} : ${avant} actions avant modification, ${apres} actions aprÃ¨s modification.`;
       })
       .filter(Boolean)
       .join(" ");
@@ -2007,7 +1997,7 @@ function generatePubTextHtml(data) {
       lines.push(
         isNl
           ? `De verdeling van de aandelen voor en na de wijziging, met in totaal ${totalActions || capitalTotal} aandelen, luidt als volgt: ${actionnaireLines}`
-          : `La répartition des actions avant et après modification, pour un total de ${totalActions || capitalTotal} actions, est la suivante : ${actionnaireLines}`
+          : `La rÃ©partition des actions avant et aprÃ¨s modification, pour un total de ${totalActions || capitalTotal} actions, est la suivante : ${actionnaireLines}`
       );
       pushBlank();
     }
@@ -2016,18 +2006,18 @@ function generatePubTextHtml(data) {
   const transfertAddress = toScalarString(transfertSiege?.nouvelle_adresse || data?.newAddress || "");
   if (transfertAddress) {
     const effectDate = formatDateLong(transfertSiege?.date_effet || data?.changeDate || "", lang);
-    lines.push(isNl ? "2. Overdracht van maatschappelijke zetel" : "2. Transfert de siège social");
+    lines.push(isNl ? "2. Overdracht van maatschappelijke zetel" : "2. Transfert de siÃ¨ge social");
     if (effectDate) {
       lines.push(
         isNl
           ? `De maatschappelijke zetel wordt overgedragen naar ${transfertAddress}, met ingang op ${effectDate}.`
-          : `Le siège social est transféré à ${transfertAddress}, avec effet au ${effectDate}.`
+          : `Le siÃ¨ge social est transfÃ©rÃ© Ã  ${transfertAddress}, avec effet au ${effectDate}.`
       );
     } else {
       lines.push(
         isNl
           ? `De maatschappelijke zetel wordt overgedragen naar ${transfertAddress}.`
-          : `Le siège social est transféré à ${transfertAddress}.`
+          : `Le siÃ¨ge social est transfÃ©rÃ© Ã  ${transfertAddress}.`
       );
     }
     pushBlank();
@@ -2035,18 +2025,18 @@ function generatePubTextHtml(data) {
 
   if (demissionnaires.length > 0) {
     const names = demissionnaires.join(", ");
-    lines.push(isNl ? "3. Ontslag van de bestuurder" : "3. Démission de l’administrateur");
+    lines.push(isNl ? "3. Ontslag van de bestuurder" : "3. DÃ©mission de lâ€™administrateur");
     if (dateAg) {
       lines.push(
         isNl
           ? `Het ontslag van ${names} uit zijn functie van bestuurder met kwijting van alle aansprakelijkheid zonder voorbehoud, met ingang op ${dateAg}.`
-          : `La démission de ${names} de son poste d’administrateur lui donnant décharge de toute responsabilité sans réserve, avec effet au ${dateAg}.`
+          : `La dÃ©mission de ${names} de son poste dâ€™administrateur lui donnant dÃ©charge de toute responsabilitÃ© sans rÃ©serve, avec effet au ${dateAg}.`
       );
     } else {
       lines.push(
         isNl
           ? `Het ontslag van ${names} uit zijn functie van bestuurder met kwijting van alle aansprakelijkheid zonder voorbehoud.`
-          : `La démission de ${names} de son poste d’administrateur lui donnant décharge de toute responsabilité sans réserve.`
+          : `La dÃ©mission de ${names} de son poste dâ€™administrateur lui donnant dÃ©charge de toute responsabilitÃ© sans rÃ©serve.`
       );
     }
     pushBlank();
@@ -2054,18 +2044,18 @@ function generatePubTextHtml(data) {
 
   if (nommes.length > 0) {
     const names = nommes.join(", ");
-    lines.push(isNl ? "4. Benoeming van een bestuurder" : "4. Nomination d’un administrateur");
+    lines.push(isNl ? "4. Benoeming van een bestuurder" : "4. Nomination dâ€™un administrateur");
     if (dateAg) {
       lines.push(
         isNl
           ? `Deze buitengewone algemene vergadering aanvaardt de benoeming van ${names} tot bestuurder, die aanvaardt, met ingang op ${dateAg}.`
-          : `La dite assemblée générale extraordinaire accepte la nomination de ${names} au poste d’administrateur, lequel/laquelle accepte, avec effet au ${dateAg}.`
+          : `La dite assemblÃ©e gÃ©nÃ©rale extraordinaire accepte la nomination de ${names} au poste dâ€™administrateur, lequel/laquelle accepte, avec effet au ${dateAg}.`
       );
     } else {
       lines.push(
         isNl
           ? `Deze buitengewone algemene vergadering aanvaardt de benoeming van ${names} tot bestuurder, die aanvaardt.`
-          : `La dite assemblée générale extraordinaire accepte la nomination de ${names} au poste d’administrateur, lequel/laquelle accepte.`
+          : `La dite assemblÃ©e gÃ©nÃ©rale extraordinaire accepte la nomination de ${names} au poste dâ€™administrateur, lequel/laquelle accepte.`
       );
     }
     pushBlank();
@@ -2080,8 +2070,8 @@ function generatePubTextHtml(data) {
   } else {
     lines.push(
       heureFin
-        ? `L'ordre du jour étant épuisé, l'assemblée est levée à ${heureFin}.`
-        : "L'ordre du jour étant épuisé, l'assemblée est levée."
+        ? `L'ordre du jour Ã©tant Ã©puisÃ©, l'assemblÃ©e est levÃ©e Ã  ${heureFin}.`
+        : "L'ordre du jour Ã©tant Ã©puisÃ©, l'assemblÃ©e est levÃ©e."
     );
   }
 
@@ -2117,7 +2107,7 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   }
   let html = await fs.readFile(templatePath, "utf-8");
 
-  // Format enterprise number: 9 digits → prepend leading 0
+  // Format enterprise number: 9 digits â†’ prepend leading 0
   const rawNumber = String(data.enterpriseNumber || "");
   const digits = rawNumber.replace(/\D/g, "");
   const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
@@ -2125,9 +2115,9 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   // Build action phrase from active services
   const actions = [];
   if (data.services?.cessionParts) actions.push("cession de parts");
-  if (data.services?.addressChange) actions.push("transfert de siège social");
+  if (data.services?.addressChange) actions.push("transfert de siÃ¨ge social");
   if (data.services?.dirigeants) {
-    actions.push("démission administrateur");
+    actions.push("dÃ©mission administrateur");
     actions.push("nomination d'administrateur");
   }
   let phrase = "";
@@ -2179,7 +2169,7 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   html = html.replaceAll("__ADDR_ZIPCODE__", he(data.address?.postalCode));
   html = html.replaceAll("__ADDR_MUNICIPALITY__", he(data.address?.municipality));
   html = html.replaceAll("__ADDR_COUNTRY__", he(data.address?.country || ""));
-  html = html.replaceAll("__PHRASE__", phrase); // raw – may contain <br>
+  html = html.replaceAll("__PHRASE__", phrase); // raw â€“ may contain <br>
 
   const pubText = normalizePubText(data.pubText);
   const hasPart1 = Boolean(pubText?.part1 && String(pubText.part1).trim());
@@ -2306,10 +2296,10 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   const branchZipcode = he(data.branchZipcode || "");
   const branchMunicipality = he(data.branchMunicipality || "");
   html = html.replace(/Rue\s*:\s*__TOKEN__/, `Rue :  ${branchStreet}`);
-  html = html.replace(/N°\s*:\s*__TOKEN__/, `N° :   ${branchHouseNumber}`);
-  html = html.replace(/Boîte\s*<span class="ls3">:\s*__TOKEN__/, `Boîte <span class="ls3">:  ${branchBox}`);
+  html = html.replace(/NÂ°\s*:\s*__TOKEN__/, `NÂ° :   ${branchHouseNumber}`);
+  html = html.replace(/BoÃ®te\s*<span class="ls3">:\s*__TOKEN__/, `BoÃ®te <span class="ls3">:  ${branchBox}`);
   html = html.replace(/postal\s*:\s*__TOKEN__/, `postal :  ${branchZipcode}`);
-  html = html.replace(/calité\s*:\s*__TOKEN__/, `calité :  ${branchMunicipality}`);
+  html = html.replace(/calitÃ©\s*:\s*__TOKEN__/, `calitÃ© :  ${branchMunicipality}`);
 
   const cessationName1 = he(data.cessationName1 || "");
   const cessationNumber1 = he(data.cessationNumber1 || "");
@@ -2322,8 +2312,8 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
     `Nom : ${cessationName1}<span class="ff7 fs4">`,
   );
   html = html.replace(
-    'N° d’entreprise<span class="_ _0"></span><span class="ff3"> : <span class="ff7 fs4">',
-    `N° d’entreprise<span class="_ _0"></span><span class="ff3"> : ${cessationNumber1}<span class="ff7 fs4">`,
+    'NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> : <span class="ff7 fs4">',
+    `NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> : ${cessationNumber1}<span class="ff7 fs4">`,
   );
   html = replaceOnce(
     html,
@@ -2332,8 +2322,8 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   );
   html = replaceOnce(
     html,
-    'N° d’entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
-    `N° d’entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber2}</span>`,
+    'NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
+    `NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber2}</span>`,
   );
   html = replaceOnce(
     html,
@@ -2342,8 +2332,8 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   );
   html = replaceOnce(
     html,
-    'N° d’entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
-    `N° d’entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber3}</span>`,
+    'NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
+    `NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber3}</span>`,
   );
 
   // Blank out all remaining __TOKEN__ (succursale, dissolution, liquidation, registre, site web, etc.)
@@ -2398,8 +2388,8 @@ async function buildAttestation1HtmlPage(data, autoprint = false) {
   }
   const hasField = (key) =>
     Object.prototype.hasOwnProperty.call(attestation, key) && attestation[key] !== null && attestation[key] !== undefined;
-  const checkboxChecked = "☑";
-  const checkboxEmpty = "☐";
+  const checkboxChecked = "â˜‘";
+  const checkboxEmpty = "â˜";
   const checkboxConstitution = hasField("constitution") ? checkboxChecked : checkboxEmpty;
   const checkboxNomination = hasField("nomination") ? checkboxChecked : checkboxEmpty;
   const checkboxDemission = hasField("demission") ? checkboxChecked : checkboxEmpty;
@@ -2414,7 +2404,7 @@ async function buildAttestation1HtmlPage(data, autoprint = false) {
     }
     return source.replaceAll(token, "");
   };
-  const fallbackName = "………………………………………………………………………………………";
+  const fallbackName = "â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦â€¦";
   const fullName = cleanAttestationValue(normalizedAttestation.company_name ?? "", "");
   html = html.replaceAll("__FIRST_NAME__", he(fullName || fallbackName));
   html = html.replaceAll("__LAST_NAME__", "");
@@ -2490,10 +2480,10 @@ function buildPvAssembleeGeneraleHtmlPage(data, autoprint = false) {
     parts.push(demandeLang === "nl" ? "Overdracht van aandelen" : "Cession de parts");
   }
   if (services.addressChange) {
-    parts.push(demandeLang === "nl" ? "Zetelverplaatsing" : "Transfert de siège social");
+    parts.push(demandeLang === "nl" ? "Zetelverplaatsing" : "Transfert de siÃ¨ge social");
   }
   if (services.dirigeants) {
-    parts.push(demandeLang === "nl" ? "Ontslag en benoeming van bestuurder" : "Démission et nomination d’administrateur");
+    parts.push(demandeLang === "nl" ? "Ontslag en benoeming van bestuurder" : "DÃ©mission et nomination dâ€™administrateur");
   }
   const servicesTitle = parts.length > 0 ? `<h3>${escapeHtml(parts.join(", "))}</h3>` : "";
   const pubTextRaw = String(data.pubText || "");
@@ -2516,7 +2506,7 @@ function buildPvAssembleeGeneraleHtmlPage(data, autoprint = false) {
   const meetingTitle =
     demandeLang === "nl"
       ? `Proces-verbaal van de buitengewone algemene vergadering van ${meetingDate}`
-      : `Procès-verbal de l’assemblée générale extraordinaire du ${meetingDate}`;
+      : `ProcÃ¨s-verbal de lâ€™assemblÃ©e gÃ©nÃ©rale extraordinaire du ${meetingDate}`;
   const autoprintScript = autoprint ? "\n<script>window.print();</script>" : "";
   let html = `<!DOCTYPE html>
 <html lang="__LANG__">
@@ -2535,7 +2525,7 @@ function buildPvAssembleeGeneraleHtmlPage(data, autoprint = false) {
 <body>
     <p>
         __FORM_JURIDIQUE__
-        « __DENOMINATION__ »<br>
+        Â« __DENOMINATION__ Â»<br>
         __STREET__
         __HOUSE_NUMBER__<br>
         __ZIPCODE__
@@ -2613,12 +2603,12 @@ function getTemplatePlacements(documentKey, payload) {
 
   const byDocument = {
     "formulaire1entr": [
-      // Page 0 — Volet A/B identification section
+      // Page 0 â€” Volet A/B identification section
       { page: 0, x: 270, y: 611, size: 9, maxWidth: 110, maxLines: 1, text: common.enterpriseNumber },
       { page: 0, x: 200, y: 593, size: 9, maxWidth: 355, maxLines: 2, text: common.companyName },
       { page: 0, x: 237, y: 548, size: 9, maxWidth: 315, maxLines: 1, text: common.legalForm },
       { page: 0, x: 219, y: 521, size: 8, maxWidth: 355, maxLines: 1, text: common.companyAddress },
-      // Page 1 — Volet B publication copy (Moniteur belge)
+      // Page 1 â€” Volet B publication copy (Moniteur belge)
       { page: 1, x: 222, y: 648, size: 9, maxWidth: 110, maxLines: 1, text: common.enterpriseNumber },
       { page: 1, x: 222, y: 625, size: 9, maxWidth: 330, maxLines: 1, text: common.companyName },
       { page: 1, x: 222, y: 598, size: 9, maxWidth: 330, maxLines: 1, text: common.legalForm },
@@ -2854,7 +2844,7 @@ async function buildDossierDocument(documentKey, body) {
   };
 
   if (documentKey === "formulaire1entr") {
-    const defaultCountry = lang === "nl" ? "België" : "Belgique";
+    const defaultCountry = lang === "nl" ? "BelgiÃ«" : "Belgique";
     let address = companyData?.addresses?.[0] || {};
     // Fallback: if postalCode/municipality missing, parse from full address string
     if (!address.postalCode && !address.municipality && companyAddressDisplay) {
@@ -2921,7 +2911,7 @@ async function buildDossierDocument(documentKey, body) {
   if (documentKey === "formulaire2entr") {
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
     const demandeAddress = addressInfo || {};
-    const defaultCountry = lang === "nl" ? "België" : "Belgique";
+    const defaultCountry = lang === "nl" ? "BelgiÃ«" : "Belgique";
     const pickValue = (...values) => {
       for (const value of values) {
         const normalized = toScalarString(value).trim();
@@ -2989,7 +2979,7 @@ async function buildDossierDocument(documentKey, body) {
 
   if (documentKey === "attestation-identite") {
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
-    // Utiliser la même logique de fallback que les autres documents
+    // Utiliser la mÃªme logique de fallback que les autres documents
     const lang = companyData?.lang_entre || "fr";
     const docLang = String(body?.file_language || lang).toLowerCase();
     const normalizedCompanyName =
@@ -3011,7 +3001,7 @@ async function buildDossierDocument(documentKey, body) {
       "Non renseignee",
     );
     const person = depositaire?.dirigeant || {};
-    // Prénom/Nom robustes
+    // PrÃ©nom/Nom robustes
     const normalizedFirstName = safeValue(
       person?.givenName || person?.given_name || person?.prenom || person?.firstName || user?.given_name,
       normalizedDepositaireName.split(" ")[0] || ""
@@ -3403,7 +3393,7 @@ async function handleLocalLogin(req, res) {
   });
 }
 
-// ── Legacy API helpers ────────────────────────────────────────────────────
+// â”€â”€ Legacy API helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function ensureLegacyDemandesStore() {
   await fs.mkdir(dataDir, { recursive: true });
@@ -4063,3 +4053,4 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, host, () => {
   console.log(`Backend + static server running on http://${host}:${port}`);
 });
+
