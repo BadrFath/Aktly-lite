@@ -11,6 +11,20 @@ import StripeResultPage from './pages/StripeResultPage'
 
 const navRoutes = ['/stripe', '/company', '/depositaire', '/adresse-info', '/dossier-final']
 const privilegedEmails = new Set(['badrfath16@gmail.com', 'contact@legakte.be'])
+const dossierResetKeys = [
+  'aktly_payment',
+  'aktly_payment_verified',
+  'aktly_company_data',
+  'aktly_depositaire',
+  'aktly_address_info',
+  'aktly_documents_lang',
+  'aktly_veriff_url',
+  'aktly_veriff_notification',
+  'aktly_step_2',
+  'aktly_step_3',
+  'aktly_step_4',
+  'aktly_step_5',
+]
 
 const buildNavItems = (uiLanguage) =>
   uiLanguage === 'nl'
@@ -50,6 +64,7 @@ function AppLayout() {
         flowTitle: '5-stappen traject (auth buiten traject)',
         uiLanguage: 'UI-taal',
         logout: 'Afmelden',
+        createFolder: 'Dossier aanmaken',
         step2Tag: 'Stap 2',
         filesLangTitle: 'Bestandstaal kiezen',
         filesLangDesc: 'Deze taal bepaalt de bestanden die later worden gegenereerd.',
@@ -60,6 +75,7 @@ function AppLayout() {
         flowTitle: 'Parcours 5 etapes (auth hors parcours)',
         uiLanguage: 'Langue UI',
         logout: 'Deconnexion',
+        createFolder: 'Creer un dossier',
         step2Tag: 'Etape 2',
         filesLangTitle: 'Choisir la langue des fichiers',
         filesLangDesc: 'Cette langue controle les fichiers generes par la suite.',
@@ -151,6 +167,11 @@ function AppLayout() {
     navigate('/auth')
   }
 
+  const onCreateFolder = () => {
+    dossierResetKeys.forEach((key) => localStorage.removeItem(key))
+    navigate('/stripe')
+  }
+
   const onChangeUiLanguage = (event) => {
     const next = event.target.value
     setUiLanguage(next)
@@ -191,6 +212,14 @@ function AppLayout() {
           {!isAuthPage && (
             <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:flex-1">
               <nav className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onCreateFolder}
+                className="step-pill inline-flex items-center gap-2 rounded-full border border-slate-600 bg-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-emerald-300/60 hover:text-emerald-100"
+              >
+                <span aria-hidden="true">+</span>
+                {t.createFolder}
+              </button>
               {navItems.map((item, index) => {
                 const active = location.pathname === item.to
                 const done = currentStep > index
