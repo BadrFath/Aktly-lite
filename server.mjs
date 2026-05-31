@@ -32,6 +32,7 @@ const stripePaymentLinkRuntime = (
   process.env.VITE_STRIPE_PAYMENT_LINK ||
   ""
 ).trim();
+const legacyApiBaseUrl = (process.env.LEGACY_API_BASE_URL || "https://demande.legakte.be/api").trim().replace(/\/$/, "");
 const bceSoapServiceUrl = (process.env.BCE_SOAP_URL || "https://kbopub.economie.fgov.be/kbopubws110000/services/wsKBOPub").trim();
 const bceSoapAction = (process.env.BCE_SOAP_ACTION || "http://fgov.economie.be/kbopub/ReadEnterprise").trim();
 const bceWsUsername = (process.env.BCE_WS_USERNAME || "wsop4830").trim();
@@ -3649,6 +3650,43 @@ const server = http.createServer(async (req, res) => {
         })
       }
       return
+    }
+
+    if (requestPath.startsWith("/api/legacy-proxy/")) {
+      const upstreamPath = requestPath.replace("/api/legacy-proxy", "");
+      const queryString = req.url && req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+      const upstreamUrl = `${legacyApiBaseUrl}${upstreamPath}${queryString}`;
+      const authHeader = req.headers["authorization"] || "";
+      const contentType = req.headers["content-type"] || "";
+
+      try {
+        const chunks = [];
+        await new Promise((resolve, reject) => {
+          req.on("data", (chunk) => chunks.push(chunk));
+          req.on("end", resolve);
+          req.on("error", reject);
+        });
+        const body = chunks.length ? Buffer.concat(chunks) : null;
+
+        const upstreamHeaders = { Accept: "application/json" };
+        if (authHeader) upstreamHeaders["Authorization"] = authHeader;
+        if (body && contentType) upstreamHeaders["Content-Type"] = contentType;
+
+        const upstreamRes = await fetch(upstreamUrl, {
+          method,
+          headers: upstreamHeaders,
+          body: body && body.length > 0 ? body : undefined,
+        });
+
+        const responseBody = await upstreamRes.arrayBuffer();
+        res.statusCode = upstreamRes.status;
+        const upstreamContentType = upstreamRes.headers.get("content-type") || "application/json";
+        res.setHeader("Content-Type", upstreamContentType);
+        res.end(Buffer.from(responseBody));
+      } catch (err) {
+        sendJson(res, 502, { message: "Legacy API proxy error", details: String(err?.message || err) });
+      }
+      return;
     }
 
     const safePath = toSafePath(req.url || "/");

@@ -1,7 +1,7 @@
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api').replace(/\/$/, '')
+const BASE_URL = '/api/legacy-proxy'
 
 function getToken() {
-  return localStorage.getItem('token') ?? ''
+  return localStorage.getItem('aktly_auth_token') ?? localStorage.getItem('token') ?? ''
 }
 
 function handleErrorStatus(status) {
