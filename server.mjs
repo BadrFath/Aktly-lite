@@ -36,6 +36,7 @@ const legacyApiBaseUrl = (process.env.LEGACY_API_BASE_URL || "http://127.0.0.1:8
 const legacyDemandesFile = path.join(dataDir, "legacy-demandes.json");
 const legacyDepositairesFile = path.join(dataDir, "legacy-depositaires.json");
 const openaiApiKey = (process.env.OPENAI_API_KEY || "").trim();
+const anthropicApiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
 const bceSoapServiceUrl = (process.env.BCE_SOAP_URL || "https://kbopub.economie.fgov.be/kbopubws110000/services/wsKBOPub").trim();
 const bceSoapAction = (process.env.BCE_SOAP_ACTION || "http://fgov.economie.be/kbopub/ReadEnterprise").trim();
 const bceWsUsername = (process.env.BCE_WS_USERNAME || "wsop4830").trim();
@@ -2800,275 +2801,149 @@ function parseBceForPv(bceData) {
   return { denomination, formJuridique, street, houseNumber, zipcode, municipality, dirigeants };
 }
 
+function normalizeBceForPdf(bceData) {
+  if (!bceData) return { denomination: '', legalForm: '', number: '', address: { street: '', houseNumber: '', postalCode: '', municipality: '' }, fullAddress: '', dirigeants: [] };
+  const parsed = parseBceForPv(bceData);
+  const number = String(bceData.number || bceData.enterpriseNumber || '');
+  const fullAddress = [parsed.street, parsed.houseNumber, parsed.zipcode, parsed.municipality].filter(Boolean).join(', ');
+  return {
+    denomination: parsed.denomination,
+    legalForm: parsed.formJuridique,
+    number,
+    address: {
+      street: parsed.street,
+      houseNumber: parsed.houseNumber,
+      postalCode: parsed.zipcode,
+      municipality: parsed.municipality,
+    },
+    fullAddress,
+    dirigeants: parsed.dirigeants,
+  };
+}
+
+function buildLegacyServices(demande) {
+  const pdfFields = demande.pdf_fields || {};
+  return {
+    cessionParts: pdfFields.cession_parts_service == 1 || Boolean(demande.cession_parts_service),
+    addressChange: pdfFields.address_service == 1 || Boolean(demande.address_service),
+    dirigeants: pdfFields.dirigeants_service == 1 || Boolean(demande.dirigeants_service),
+  };
+}
+
 function esc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function buildPvAgHtml(demande) {
-  const bce = parseBceForPv(demande.bce_data || {});
-  const pdfFields = demande.pdf_fields || {};
-  const lang = (demande.bce_data && demande.bce_data.lang_entre) || 'fr';
-  const parts = [];
-  if (pdfFields.cession_parts_service == 1) parts.push(lang === 'nl' ? 'Overdracht van aandelen' : 'Cession de parts');
-  if (pdfFields.address_service == 1) parts.push(lang === 'nl' ? 'Zetelverplaatsing' : 'Transfert de si\u00e8ge social');
-  if (pdfFields.dirigeants_service == 1) parts.push(lang === 'nl' ? 'Ontslag en benoeming van bestuurder' : 'D\u00e9mission et nomination d\u2019administrateur');
-  const title = parts.join(', ');
-  const dateLabel = lang === 'nl'
-    ? `Proces-verbaal van de buitengewone algemene vergadering van ${formatDateFr(demande.date_assemblee)}`
-    : `Proc\u00e8s-verbal de l\u2019assembl\u00e9e g\u00e9n\u00e9rale extraordinaire du ${formatDateFr(demande.date_assemblee)}`;
-  const pvRaw6 = demande.pub_text || demande.pv_text || buildPvTextTemplate(demande);
-  const pvText = (typeof pvRaw6 === 'object' && pvRaw6 !== null ? Object.values(pvRaw6).filter(Boolean).join('\n') : String(pvRaw6 || '')).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>');
-  const signaturesHtml = (bce.dirigeants || []).map(d =>
-    `<div class="sig-block"><div>${esc(d.givenName)} ${esc(d.surname)}<br>${lang === 'nl' ? 'Bestuurder' : 'Administrateur'}</div></div>`
-  ).join('');
-  return `<!DOCTYPE html>
-<html lang="${esc(lang)}">
-<head>
-  <meta charset="UTF-8">
-  <title>Proc\u00e8s-verbal</title>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }
-    h1, h2, h3 { text-align: center; }
-    .signature { margin-top: 60px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
-    .sig-block { text-align: center; min-width: 150px; }
-    @media print { .no-print { display: none; } }
-  </style>
-</head>
-<body>
-  <p>
-    ${esc(bce.formJuridique)} \u00ab ${esc(bce.denomination)} \u00bb<br>
-    ${esc(bce.street)} ${esc(bce.houseNumber)}<br>
-    ${esc(bce.zipcode)} ${esc(bce.municipality)}
-  </p>
-  <h3>${esc(dateLabel)}</h3>
-  ${title ? `<h3>${esc(title)}</h3>` : ''}
-  <p>${pvText}</p>
-  <div class="signature">
-    ${signaturesHtml}
-  </div>
-</body>
-<script>window.print();</script>
-</html>`;
+async function buildPvAgHtml(demande) {
+  const bce = normalizeBceForPdf(demande.bce_data || {});
+  const lang = demande.langue || (demande.bce_data && demande.bce_data.lang_entre) || "fr";
+  const services = buildLegacyServices(demande);
+  return buildPvAssembleeGeneraleHtmlPage({
+    lang, demandeLang: lang,
+    formJuridique: bce.legalForm || "",
+    denomination: bce.denomination || "",
+    street: bce.address.street,
+    houseNumber: bce.address.houseNumber,
+    zipcode: bce.address.postalCode,
+    municipality: bce.address.municipality,
+    services,
+    pubText: demande.pub_text || demande.pv_text || "",
+    dateAssemblee: demande.date_assemblee || "",
+    dirigeants: bce.dirigeants,
+  }, true);
 }
 
-function buildDeclarationHtml(demande) {
-  const bce = parseBceForPv(demande.bce_data || {});
-  const pdfFields = demande.pdf_fields || {};
-  const entNum = demande.enterprise_number || '';
-  const dirigeants = bce.dirigeants || [];
-  const d0 = dirigeants[0] || {};
-  const d1 = dirigeants[1] || {};
-  const d2 = dirigeants[2] || {};
-  const sigName = [d0.givenName, d0.surname].filter(Boolean).join(' ') || '--';
-  const sigFunc = d0.func || 'Administrateur';
-  function dRow(d) {
-    const name = [d.givenName, d.surname].filter(Boolean).join(' ');
-    return { name: name || '', id: d.idNumber || '', function: d.func || '' };
-  }
-  const r0 = dRow(d0), r1 = dRow(d1), r2 = dRow(d2);
-  const addressStr = [bce.street, bce.houseNumber, bce.municipality, bce.zipcode].filter(Boolean).join(' ');
-  const templatePath = require('path').join(__dirname, 'frontend', 'public', 'style2', 'declaration-template.html');
-  let html = require('fs').readFileSync(templatePath, 'utf8');
-  html = html.replace('__ENTERPRISE_NUMBER__', esc(entNum));
-  html = html.replace('__COMPANY_NAME__', esc(bce.denomination));
-  html = html.replace('__LEGAL_FORM__', esc(bce.formJuridique));
-  html = html.replace('__ADDRESS__', esc(addressStr));
-  html = html.replace('__SIGNATORY_NAME__', esc(sigName));
-  html = html.replace('__DIRIGEANT_1_NAME__ - __DIRIGEANT_1_ID__', esc(r0.name) + (r0.id ? ' - ' + esc(r0.id) : ''));
-  html = html.replace('__DIRIGEANT_1_FUNCTION__', esc(r0.function || 'Administrateur'));
-  html = html.replace('__DIRIGEANT_2_NAME__ - __DIRIGEANT_2_ID__', esc(r1.name) + (r1.id ? ' - ' + esc(r1.id) : ''));
-  html = html.replace('__DIRIGEANT_2_FUNCTION__', esc(r1.function || ''));
-  html = html.replace('__DIRIGEANT_3_NAME__ - __DIRIGEANT_3_ID__', esc(r2.name) + (r2.id ? ' - ' + esc(r2.id) : ''));
-  html = html.replace('__DIRIGEANT_3_FUNCTION__', esc(r2.function || ''));
-  html = html.replace('__FAIT_A__', esc(demande.fait_a || ''));
-  html = html.replace('__DATE_ASSEMBLEE__', esc(demande.date_assemblee || ''));
-  html += '\n<script>window.print();</script>\n';
-  return html;
+async function buildDeclarationHtml(demande) {
+  const bce = normalizeBceForPdf(demande.bce_data || {});
+  const lang = demande.langue || (demande.bce_data && demande.bce_data.lang_entre) || "fr";
+  const d0 = bce.dirigeants[0] || {};
+  const sigName = [d0.givenName, d0.surname].filter(Boolean).join(" ") || "";
+  return buildDeclarationHtmlPage({
+    langue: lang,
+    enterpriseNumber: bce.number || demande.enterprise_number || "",
+    companyName: bce.denomination || "",
+    legalForm: bce.legalForm || "",
+    companyAddress: bce.fullAddress,
+    signatoryName: sigName,
+    faitA: demande.fait_a || "",
+    dateAssemblee: demande.date_assemblee || "",
+    dirigeants: bce.dirigeants.map(d => ({
+      name: [d.givenName, d.surname].filter(Boolean).join(" "),
+      idNumber: d.idNumber || "",
+      function: d.func || "Administrateur",
+    })),
+  }, true);
 }
 
-function buildAttestationHtml(demande) {
-  const bce = parseBceForPv(demande.bce_data || {});
-  const pdfFields = demande.pdf_fields || {};
-  const deposName = demande.depositaire_name || '';
-  const firstName = deposName.split(' ')[0] || '';
-  const lastName = deposName.split(' ').slice(1).join(' ') || '';
-  const email = demande.depositaire_email || '';
-  const phone = demande.depositaire_phone || '';
-  const firm = demande.depositaire_firm || '';
-  const chars = (phone + '            ').slice(0, 12).split('');
-  const dirigeants_check = (pdfFields.dirigeants_service == 1) ? '\u2612' : '\u25a1';
-  const cession_check = (pdfFields.cession_parts_service == 1) ? '\u2612' : '\u25a1';
-  const address_check = (pdfFields.address_service == 1) ? '\u2612' : '\u25a1';
-  const createdAt = demande.created_at ? new Date(demande.created_at) : new Date();
-  const dd = String(createdAt.getDate()).padStart(2,'0');
-  const mm = String(createdAt.getMonth()+1).padStart(2,'0');
-  const yyyy = createdAt.getFullYear();
-  const templatePath = require('path').join(__dirname, 'frontend', 'public', 'style6', 'attestation-template.html');
-  let html = require('fs').readFileSync(templatePath, 'utf8');
-  html = html.replace('__FIRST_NAME__', esc(firstName));
-  html = html.replace('__LAST_NAME__', esc(lastName));
-  html = html.replace('__EMAIL__', esc(email));
-  html = html.replace('__GSM__', esc(phone));
-  html = html.replace('__FIRM__', esc(firm));
-  html = html.replace('__COMPANY_NAME__', esc(bce.denomination));
-  html = html.replace('__DIRIGEANTS_CHECK__', dirigeants_check);
-  html = html.replace('__CESSION_CHECK__', cession_check);
-  html = html.replace('__ADDRESS_CHECK__', address_check);
-  html = html.replace('__CREATED_DD__', dd);
-  html = html.replace('__CREATED_MM__', mm);
-  html = html.replace('__CREATED_YYYY__', String(yyyy));
-  for (let i = 0; i < 12; i++) {
-    html = html.replace('__CHAR_' + i + '__', esc(chars[i] || ''));
-  }
-  html += '\n<script>window.print();</script>\n';
-  return html;
+async function buildAttestationHtml(demande) {
+  const bce = normalizeBceForPdf(demande.bce_data || {});
+  const lang = demande.langue || (demande.bce_data && demande.bce_data.lang_entre) || "fr";
+  const services = buildLegacyServices(demande);
+  const existingAttestation = demande.attestation || {};
+  const attestation = {
+    company_name: bce.denomination || "",
+    identifier: bce.number || demande.enterprise_number || "",
+    addresses: bce.address.municipality ? [{ municipality: bce.address.municipality }] : [],
+    en_date_du: demande.date_assemblee || "",
+    transfert: services.addressChange ? "1" : undefined,
+    nomination: services.dirigeants ? "1" : undefined,
+    demission: services.dirigeants ? "1" : undefined,
+    ...existingAttestation,
+  };
+  return buildAttestation1HtmlPage({ langue: lang, attestation }, true);
 }
 
-function buildFormulaire1Html(demande) {
-  const bce = parseBceForPv(demande.bce_data || {});
-  const pdfFields = demande.pdf_fields || {};
-  const entNum = demande.enterprise_number || '';
-
-  // Address: "Rue X 10, Commune 1000 Belgique"
-  const addrParts = [bce.street, bce.houseNumber].filter(Boolean).join(' ');
-  const cityParts = [bce.municipality, bce.zipcode, 'Belgique'].filter(Boolean).join(' ');
-  const address = [addrParts, cityParts].filter(Boolean).join(', ');
-
-  // Build "Objet de l'acte" service list like original formulaire1.blade.php
-  const actions = [];
-  if (pdfFields.cession_parts_service == 1) actions.push('cession de parts');
-  if (pdfFields.address_service == 1) actions.push('transfert de si\u00e8ge social');
-  if (pdfFields.dirigeants_service == 1) {
-    actions.push('d\u00e9mission administrateur');
-    actions.push('nomination d\u2019administrateur');
-  }
-  // Also check top-level demande fields if pdf_fields not set
-  if (!actions.length && demande.address_service) actions.push('transfert de siège social');
-  if (!actions.length && demande.cession_parts_service) actions.push('cession de parts');
-  if (!actions.length && demande.dirigeants_service) { actions.push('démission administrateur'); actions.push('nomination d’administrateur'); }
-  if (!actions.length) actions.push('transfert de siège social'); // default
-  let objet = '';
-  if (actions.length > 0) {
-    const last = actions.length > 1 ? actions.pop() : '';
-    objet = actions.join(', ') + (last ? ' et ' + last : '');
-    objet = objet.charAt(0).toUpperCase() + objet.slice(1);
-  }
-
-  // PV text - pub_text may be {part1,part2,...} or plain string
-  let pvRaw = demande.pub_text || demande.pv_text || '';
-  if (typeof pvRaw === 'object' && pvRaw !== null) {
-    pvRaw = Object.values(pvRaw).filter(Boolean).join('\n');
-  }
-  const pvText = esc(String(pvRaw)).replace(/\n/g, '<br>');
-
-  // Intro line: "N? PV de l'AG du DATE"
-  const pvIntro = `${esc(entNum)}&nbsp;&nbsp;<strong>Proc\u00e8s-verbal de l\u2019assembl\u00e9e g\u00e9n\u00e9rale extraordinaire du</strong> ${esc(formatDateFr(demande.date_assemblee))}`;
-
-  // Signatures
-  const sigsHtml = (bce.dirigeants || []).map(d =>
-    `<p style="margin:4px 0;">- <strong>${esc(d.givenName)} ${esc(d.surname)}</strong></p>`
-  ).join('');
-
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <title>Formulaire I</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 50px 60px; line-height: 1.7; font-size: 11pt; color: #222; }
-    .company-header { text-align: center; margin-bottom: 16px; border: 1px dashed #bbb; padding: 12px; }
-    .company-header p { margin: 2px 0; }
-    .objet { font-weight: bold; text-decoration: underline; margin: 18px 0 6px 0; }
-    .pv-intro { margin: 6px 0 12px 22px; }
-    .pv-body { margin: 0 0 16px 0; }
-    .signatures { margin-top: 30px; }
-    @media print { .no-print { display: none; } }
-  </style>
-</head>
-<body>
-  <div class="company-header">
-    <p>N\u00b0 d\u2019entreprise&nbsp;: ${esc(entNum)}</p>
-    <p><strong>Nom</strong></p>
-    <p>(en entier)&nbsp;: ${esc(bce.denomination)}</p>
-    <p>(en abr\u00e9g\u00e9)&nbsp;: ${esc(bce.denomination)}</p>
-    <p>Forme l\u00e9gale&nbsp;: &nbsp;&nbsp;${esc(bce.formJuridique)}</p>
-    <p style="text-align:left;">Adresse compl\u00e8te du si\u00e8ge&nbsp;: ${esc(address)}</p>
-  </div>
-  <p class="objet">Objet de l\u2019acte&nbsp;: ${esc(objet)}</p>
-  <p class="pv-intro">${pvIntro}</p>
-  <div class="pv-body">${pvText}</div>
-  <div class="signatures">
-    <p><strong>Signatures&nbsp;:</strong></p>
-    ${sigsHtml || '<p>-</p>'}
-  </div>
-</body>
-<script>window.print();</script>
-</html>`;
+async function buildFormulaire1Html(demande) {
+  const bce = normalizeBceForPdf(demande.bce_data || {});
+  const lang = demande.langue || (demande.bce_data && demande.bce_data.lang_entre) || "fr";
+  const services = buildLegacyServices(demande);
+  return buildFormulaire1HtmlPage({
+    langue: lang,
+    enterpriseNumber: bce.number || demande.enterprise_number || "",
+    companyName: bce.denomination || "",
+    legalForm: bce.legalForm || "",
+    address: {
+      street: bce.address.street,
+      houseNumber: bce.address.houseNumber,
+      box: "",
+      postalCode: bce.address.postalCode,
+      municipality: bce.address.municipality,
+      country: "Belgique",
+    },
+    pubText: demande.pub_text || demande.pv_text || null,
+    attestation: demande.attestation || {},
+    services,
+    userFirstName: "",
+    userLastName: "",
+    faitA: demande.fait_a || "",
+    dateAssemblee: demande.date_assemblee || "",
+    changeDate: demande.date_changement || "",
+    depositaireName: "",
+  }, true);
 }
-function buildFormulaire2Html(demande) {
-  const bce = parseBceForPv(demande.bce_data || {});
-  const pdfFields = demande.pdf_fields || {};
-  const entNum = demande.enterprise_number || '';
-  const address = [bce.street, bce.houseNumber, bce.zipcode, bce.municipality].filter(Boolean).join(', ');
-  const services = [];
-  if (pdfFields.cession_parts_service == 1) services.push('Cession de parts');
-  if (pdfFields.address_service == 1) services.push('Transfert de si\u00e8ge social');
-  if (pdfFields.dirigeants_service == 1) services.push('D\u00e9mission / Nomination d\u2019administrateur');
-  const extrText = esc(demande.extrait_text || demande.pub_text || '').replace(/\n/g, '<br>');
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <title>Formulaire II - Extrait</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; font-size: 12pt; }
-    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-    td, th { border: 1px solid #999; padding: 6px 10px; }
-    th { background: #f0f0f0; font-weight: bold; }
-    .section { margin: 20px 0; }
-    h2 { font-size: 14pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-    @media print { .no-print { display: none; } }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h2>GREFFE DES PERSONNES MORALES</h2>
-    <p>Formule II - Extrait pour publication aux Annexes du Moniteur belge</p>
-  </div>
-  <div class="section">
-    <h2>Identification de la soci\u00e9t\u00e9</h2>
-    <table>
-      <tr><th>Num\u00e9ro d&apos;entreprise</th><td>${esc(entNum)}</td></tr>
-      <tr><th>D\u00e9nomination</th><td>${esc(bce.denomination)}</td></tr>
-      <tr><th>Forme juridique</th><td>${esc(bce.formJuridique)}</td></tr>
-      <tr><th>Si\u00e8ge social</th><td>${esc(address)}</td></tr>
-    </table>
-  </div>
-  <div class="section">
-    <h2>Objet de la publication</h2>
-    <table>
-      ${services.map(s => `<tr><td>\u2611 ${esc(s)}</td></tr>`).join('')}
-    </table>
-  </div>
-  <div class="section">
-    <h2>Extrait de l&apos;acte</h2>
-    <p>${extrText}</p>
-  </div>
-  <div class="section" style="margin-top:60px;">
-    <table>
-      <tr>
-        <td style="width:50%;text-align:center;border:none;">Fait \u00e0 ${esc(demande.fait_a || '')}<br>Le ${esc(formatDateFr(demande.date_assemblee))}<br><br><br>___________________<br>Signature</td>
-        <td style="width:50%;text-align:center;border:none;"></td>
-      </tr>
-    </table>
-  </div>
-</body>
-<script>window.print();</script>
-</html>`;
+async function buildFormulaire2Html(demande) {
+  const bce = normalizeBceForPdf(demande.bce_data || {});
+  const lang = demande.langue || (demande.bce_data && demande.bce_data.lang_entre) || "fr";
+  return buildFormulaire2HtmlPage({
+    enterpriseNumber: bce.number || demande.enterprise_number || "",
+    companyName: bce.denomination || "",
+    legalForm: bce.legalForm || "",
+    companyAddress: bce.fullAddress,
+    addrStreet: bce.address.street,
+    addrHouseNumber: bce.address.houseNumber,
+    addrBox: "",
+    addrZipcode: bce.address.postalCode,
+    addrMunicipality: bce.address.municipality,
+    addrCountry: "Belgique",
+    faitA: demande.fait_a || "",
+    dateAssemblee: demande.date_assemblee || "",
+    depositaireName: "",
+    signatoryName: "",
+    userEmail: "",
+  }, true);
 }
 
-function buildExtraitHtml(demande) {
+async function buildExtraitHtml(demande) {
   return buildFormulaire2Html(demande);
 }
 
@@ -3787,23 +3662,48 @@ async function readRawBody(req) {
   return Buffer.concat(chunks);
 }
 
+async function generateWithClaude(prompt) {
+  if (!anthropicApiKey) return null;
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-latest",
+        max_tokens: 1500,
+        system: "Tu es un juriste specialise en droit des societes belge. Tu rediges des documents juridiques formels.",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json().catch(() => null);
+    return data?.content?.[0]?.text ?? null;
+  } catch { return null; }
+}
+
 async function generatePvTextWithAI(demande) {
+  const bce = demande.bce_data || {};
+  const lang = demande.langue || "fr";
+  const bceNorm = normalizeBceForPdf(bce);
+  const denomination = bceNorm.denomination || "la societe";
+  const addr = bceNorm.fullAddress || "";
+  const buildPrompt = (lang) => lang === "nl"
+    ? `Schrijf een volledig processen-verbaal (PV) van de buitengewone algemene vergadering van ${denomination} (ondernemingsnummer: ${demande.enterprise_number}), gehouden te ${demande.fait_a || "..."} op ${demande.date_assemblee || "..."}, voor de verplaatsing van de maatschappelijke zetel. Datum van de wijziging: ${demande.date_changement || "..."}. Huidig adres: ${addr}. Schrijf in formeel Belgisch juridisch Nederlands.`
+    : `Redige un proces-verbal complet (PV) de l'assemblee generale extraordinaire de ${denomination} (numero d'entreprise: ${demande.enterprise_number}), tenue a ${demande.fait_a || "..."} le ${demande.date_assemblee || "..."}, portant sur le transfert du siege social. Date de la modification: ${demande.date_changement || "..."}. Adresse actuelle: ${addr}. Redige en francais juridique belge formel.`;
+  const prompt = buildPrompt(lang);
+  // Try Claude first, then OpenAI
+  let result = await generateWithClaude(prompt);
+  if (result) return result;
   if (!openaiApiKey) return null;
   try {
-    const bce = demande.bce_data || {};
-    const lang = demande.langue || "fr";
-    const rawDenomAI = bce.denomination;
-  let denomination = "la societe";
-  if (Array.isArray(rawDenomAI) && rawDenomAI[0] && rawDenomAI[0].description) {
-    const mAI = (rawDenomAI[0].description || []).find(d => d.language === lang) || rawDenomAI[0].description[0] || {};
-    denomination = mAI.value || "la societe";
-  } else if (typeof rawDenomAI === "string" && rawDenomAI) {
-    denomination = rawDenomAI;
-  }
-  const address = bce.address
+    const address = bce.address
       ? `${bce.address.street} ${bce.address.houseNumber}${bce.address.box ? "/" + bce.address.box : ""}, ${bce.address.postalCode} ${bce.address.municipality}`
       : "";
-    const prompt = lang === "nl"
+    const openaiPrompt = lang === "nl"
       ? `Schrijf een volledig processen-verbaal (PV) van de buitengewone algemene vergadering van ${denomination} (ondernemingsnummer: ${demande.enterprise_number}), gehouden te ${demande.fait_a || "..."} op ${demande.date_assemblee || "..."}, voor de verplaatsing van de maatschappelijke zetel. Datum van de wijziging: ${demande.date_changement || "..."}. Huidig adres: ${address}. Schrijf in formeel Belgisch juridisch Nederlands.`
       : `Redige un proces-verbal complet (PV) de l'assemblee generale extraordinaire de ${denomination} (numero d'entreprise: ${demande.enterprise_number}), tenue a ${demande.fait_a || "..."} le ${demande.date_assemblee || "..."}, portant sur le transfert du siege social. Date de la modification: ${demande.date_changement || "..."}. Adresse actuelle: ${address}. Redige en francais juridique belge formel.`;
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -3813,7 +3713,7 @@ async function generatePvTextWithAI(demande) {
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "Tu es un juriste specialise en droit des societes belge. Tu rediges des documents juridiques formels." },
-          { role: "user", content: prompt },
+          { role: "user", content: openaiPrompt },
         ],
         temperature: 0.5,
         max_tokens: 1500,
@@ -4366,19 +4266,23 @@ const server = http.createServer(async (req, res) => {
           const d = demandes[idx];
           const docType = subPath.slice("download/".length);
           let html = null;
-          if (docType === "pv") html = buildPvAgHtml(d);
-          else if (docType === "declaration") html = buildDeclarationHtml(d);
-          else if (docType === "attestation") html = buildAttestationHtml(d);
-          else if (docType === "formulaire1") html = buildFormulaire1Html(d);
-          else if (docType === "formulaire2") html = buildFormulaire2Html(d);
-          else if (docType === "extrait") html = buildExtraitHtml(d);
+          try {
+            if (docType === "pv") html = await buildPvAgHtml(d);
+            else if (docType === "declaration") html = await buildDeclarationHtml(d);
+            else if (docType === "attestation") html = await buildAttestationHtml(d);
+            else if (docType === "formulaire1") html = await buildFormulaire1Html(d);
+            else if (docType === "formulaire2") html = await buildFormulaire2Html(d);
+            else if (docType === "extrait") html = await buildExtraitHtml(d);
+          } catch (pdfErr) {
+            console.error("PDF generation error:", pdfErr);
+          }
           if (html) {
             res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
             res.end(html);
             return;
           }
-          sendJson(res, 404, { message: 'Type de document inconnu.' });
+          sendJson(res, 404, { message: "Type de document inconnu." });
           return;
         }
 
