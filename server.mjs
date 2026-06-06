@@ -2186,8 +2186,7 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   }
 
   const attestationIdentifier = toScalarString(data.attestation?.identifier ?? data.attestationIdentifier);
-  const pubTextPrefix = attestationIdentifier ? `${attestationIdentifier} ` : "";
-  html = html.replaceAll("__PUB_TEXT_PART1__", `${pubTextPrefix}${pubText.part1 || ""}`);
+  html = html.replaceAll("__PUB_TEXT_PART1__", pubText.part1 || "");
   html = html.replaceAll("__PUB_TEXT_PART2__", pubText.part2 || "");
   html = html.replaceAll("__USER_FIRST_NAME__", he(data.userFirstName));
   html = html.replaceAll("__USER_LAST_NAME__", he(data.userLastName));
