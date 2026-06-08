@@ -46,34 +46,33 @@ const bceCompanyCache = new Map();
 
 // Translation map for Belgian legal forms (fr <-> nl)
 const LEGAL_FORM_FR_TO_NL = {
-  "SociÃ©tÃ© Ã  responsabilitÃ© limitÃ©e": "Besloten Vennootschap",
+  "Société à responsabilité limitée": "Besloten Vennootschap",
   "SRL": "BV",
   "SPRL": "BVBA",
-  "SociÃ©tÃ© PrivÃ©e Ã  ResponsabilitÃ© LimitÃ©e": "Besloten Vennootschap met Beperkte Aansprakelijkheid",
-  "SociÃ©tÃ© Anonyme": "Naamloze Vennootschap",
+  "Société Privée à Responsabilité Limitée": "Besloten Vennootschap met Beperkte Aansprakelijkheid",
+  "Société Anonyme": "Naamloze Vennootschap",
   "SA": "NV",
-  "SociÃ©tÃ© en commandite simple": "Gewone commanditaire vennootschap",
+  "Société en commandite simple": "Gewone commanditaire vennootschap",
   "SCS": "CommV",
   "SComm": "CommV",
-  "SociÃ©tÃ© en commandite par actions": "Commanditaire vennootschap op aandelen",
+  "Société en commandite par actions": "Commanditaire vennootschap op aandelen",
   "SCA": "CVA",
-  "SociÃ©tÃ© en nom collectif": "Vennootschap onder firma",
+  "Société en nom collectif": "Vennootschap onder firma",
   "SNC": "VOF",
-  "SociÃ©tÃ© coopÃ©rative": "CoÃ¶peratieve vennootschap",
+  "Société coopérative": "Coöperatieve vennootschap",
   "SC": "CV",
   "Association sans but lucratif": "Vereniging zonder winstoogmerk",
   "ASBL": "VZW",
   "Association internationale sans but lucratif": "Internationale vereniging zonder winstoogmerk",
   "AISBL": "IVZW",
   "Fondation": "Stichting",
-  "Fondation privÃ©e": "Private stichting",
-  "SociÃ©tÃ© de droit commun": "Maatschap",
+  "Fondation privée": "Private stichting",
+  "Société de droit commun": "Maatschap",
   "Entreprise individuelle": "Eenmanszaak",
-  "SociÃ©tÃ© agricole": "Landbouwvennootschap",
-  "SA": "NV",
-  "Groupement d'intÃ©rÃªt Ã©conomique": "Economisch samenwerkingsverband",
+  "Société agricole": "Landbouwvennootschap",
+  "Groupement d'intérêt Ã©conomique": "Economisch samenwerkingsverband",
   "GIE": "ESV",
-  "SociÃ©tÃ© europÃ©enne": "Europese vennootschap",
+  "Société européenne": "Europese vennootschap",
   "SE": "SE",
 };
 const LEGAL_FORM_NL_TO_FR = Object.fromEntries(
@@ -101,7 +100,7 @@ const companyDirectoryFromAktlyMain = {
     status: "Actif",
     legalSituation: "Situation normale",
     typeOfEnterprise: "ELP",
-    legalForm: "SociÃ©tÃ© Ã  responsabilitÃ© limitÃ©e",
+    legalForm: "Société à responsabilité limitée",
     startDate: "2025-04-09",
     address: {
       street: "Avenue des Gerfauts",
@@ -1058,8 +1057,9 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      html = await response.text();
-      if (/<table|Ondernemingsnummer|Num[eÃ©]ro d'entreprise|Benaming|D[eÃ©]nomination/i.test(html)) {
+      const buffer = await response.arrayBuffer();
+      html = new TextDecoder("iso-8859-1").decode(buffer);
+      if (/<table|Ondernemingsnummer|Num[eé]ro d'entreprise|Benaming|D[eé]nomination/i.test(html)) {
         break;
       }
     } catch (error) {
@@ -1073,13 +1073,13 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
 
   const rows = parseBceRows(html);
 
-  const numberRaw = pickRowValue(rows, ["Numero d'entreprise", "NumÃ©ro d'entreprise", "Ondernemingsnummer"]);
-  const denominationRaw = pickRowValue(rows, ["Denomination", "DÃ©nomination", "Benaming", "Naam"]);
+  const numberRaw = pickRowValue(rows, ["Numéro d'entreprise", "Numero d'entreprise", "Ondernemingsnummer"]);
+  const denominationRaw = pickRowValue(rows, ["Dénomination", "Denomination", "Benaming", "Naam"]);
   const statusRaw = pickRowValue(rows, ["Statut", "Status"]);
   const legalSituationRaw = pickRowValue(rows, ["Situation juridique", "Juridische situatie"]);
-  const startDateRaw = pickRowValue(rows, ["Date de debut", "Date de dÃ©but", "Startdatum", "Begindatum", "Datum oprichting", "Ingeschreven sinds"]);
-  const legalFormRaw = pickRowValue(rows, ["Forme legale", "Forme lÃ©gale", "Rechtsvorm"]);
-  const addressRaw = pickRowValue(rows, ["Adresse du siege", "Adresse du siÃ¨ge", "Adres van de zetel"]);
+  const startDateRaw = pickRowValue(rows, ["Date de début", "Date de debut", "Startdatum", "Begindatum", "Datum oprichting", "Ingeschreven sinds"]);
+  const legalFormRaw = pickRowValue(rows, ["Forme légale", "Forme legale", "Rechtsvorm"]);
+  const addressRaw = pickRowValue(rows, ["Adresse du siège", "Adresse du siege", "Adres van de zetel"]);
 
   const number = String(numberRaw || cleanNumber).replace(/\D+/g, "") || cleanNumber;
   const denomination =
@@ -2116,9 +2116,9 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   // Build action phrase from active services
   const actions = [];
   if (data.services?.cessionParts) actions.push("cession de parts");
-  if (data.services?.addressChange) actions.push("transfert de siÃ¨ge social");
+  if (data.services?.addressChange) actions.push("transfert de siège social");
   if (data.services?.dirigeants) {
-    actions.push("dÃ©mission administrateur");
+    actions.push("démission administrateur");
     actions.push("nomination d'administrateur");
   }
   let phrase = "";
@@ -2127,6 +2127,16 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
     phrase = actions.join(", ") + (last ? " et " + last : "");
     phrase = phrase.charAt(0).toUpperCase() + phrase.slice(1);
     phrase = wordwrapHtml(phrase, 88);
+  }
+  if (!phrase && data.pubText) {
+    const pt1 = typeof data.pubText === 'string' ? data.pubText : (data.pubText?.part1 || '');
+    const firstSentence = String(pt1).split(/[\.\n]/)[0].trim();
+    if (firstSentence.length > 5 && firstSentence.length < 120) {
+      phrase = wordwrapHtml(firstSentence, 88);
+    }
+  }
+  if (!phrase) {
+    phrase = "Modification";
   }
 
   const he = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -2776,14 +2786,45 @@ function parseBceForPv(bceData) {
     }
   } catch(e) {}
   let formJuridique = '';
-  try { formJuridique = buildExtractDesc(bceData.juridicalForm && bceData.juridicalForm.description, lang); } catch(e){}
+  try {
+    formJuridique =
+      buildExtractDesc(bceData.juridicalForm && bceData.juridicalForm.description, lang) ||
+      (Array.isArray(bceData.enterprise?.legalFormDescriptions)
+        ? buildExtractDesc(bceData.enterprise.legalFormDescriptions, lang)
+        : null) ||
+      bceData.enterprise?.legalForm ||
+      bceData.legalForm ||
+      '';
+  } catch(e) {}
   let street = '', houseNumber = '', zipcode = '', municipality = '';
   try {
-    const addr = (bceData.addresses && bceData.addresses[0]) || bceData.address || {};
-    street = buildExtractDesc(addr.street, lang) || addr.street || '';
+    let addr = {};
+    if (bceData.addresses && Array.isArray(bceData.addresses) && bceData.addresses[0]) {
+      addr = bceData.addresses[0];
+    }
+    street = buildExtractDesc(addr.street, lang) || (typeof addr.street === 'string' ? addr.street : '') || '';
     houseNumber = addr.houseNumber || '';
     zipcode = addr.zipCode || addr.zipcode || addr.postalCode || '';
-    municipality = buildExtractDesc(addr.municipality, lang) || addr.municipality || '';
+    municipality = buildExtractDesc(addr.municipality, lang) || (typeof addr.municipality === 'string' ? addr.municipality : '') || '';
+
+    // Fallback: parse full address string when individual fields are incomplete
+    if (!zipcode || !municipality || !street) {
+      const fullAddrStr = (typeof bceData.address === 'string' ? bceData.address : '') || (addr.full || '');
+      if (fullAddrStr) {
+        const zipMatch = fullAddrStr.match(/\b(\d{4})\s+([A-Za-z\u00C0-\u017E][A-Za-z\u00C0-\u017E\s\-]+?)(?:,|$)/);
+        if (zipMatch) {
+          if (!zipcode) zipcode = zipMatch[1];
+          if (!municipality) municipality = zipMatch[2].trim();
+        }
+        if (!street || !houseNumber) {
+          const streetMatch = fullAddrStr.match(/^([A-Za-z\u00C0-\u017E][^,]+?)\s+(\d+[\w\/-]*)(?:\s*(?:bus|boite|bte|box)\s*[\w\/-]+)?(?:,|$)/i);
+          if (streetMatch) {
+            if (!street) street = streetMatch[1].trim();
+            if (!houseNumber) houseNumber = streetMatch[2].trim();
+          }
+        }
+      }
+    }
   } catch(e){}
   let dirigeants = [];
   try {
