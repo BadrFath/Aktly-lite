@@ -1074,7 +1074,11 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
       }
 
       const buffer = await response.arrayBuffer();
-      html = new TextDecoder("iso-8859-1").decode(buffer);
+      // Detect charset from Content-Type header; KBO French pages are UTF-8, Dutch are iso-8859-1
+      const contentType = response.headers.get("content-type") || "";
+      const charsetMatch = contentType.match(/charset=([\w-]+)/i);
+      const charset = charsetMatch ? charsetMatch[1].toLowerCase() : "utf-8";
+      html = new TextDecoder(charset === "iso-8859-1" || charset === "latin-1" ? "iso-8859-1" : "utf-8").decode(buffer);
       if (/<table|Ondernemingsnummer|Num[eé]ro d'entreprise|Benaming|D[eé]nomination/i.test(html)) {
         break;
       }
