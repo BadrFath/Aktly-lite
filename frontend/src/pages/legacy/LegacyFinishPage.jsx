@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { cardReveal, pageContainer } from '../../lib/motionPresets'
 
-const API_BASE = '/api/legacy-proxy'
+const API_BASE = (import.meta.env.VITE_LEGACY_API_BASE ?? '/api/legacy-proxy').replace(/\/$/, '')
 
 const legacySessionKeys = [
   'demande_id', 'missing_fields_data', 'entreprise_number',
@@ -40,7 +40,7 @@ function LegacyFinishPage({ uiLanguage = 'fr' }) {
 
   const downloadDoc = (type) => {
     if (!demandeId || demandeId === '—') return
-    window.open('/api/legacy-proxy/demandes/' + demandeId + '/download/' + type, '_blank')
+    window.open(API_BASE + '/demandes/' + demandeId + '/download/' + type, '_blank')
   }
 
   return (

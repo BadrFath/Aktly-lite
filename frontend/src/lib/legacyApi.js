@@ -1,4 +1,4 @@
-const BASE_URL = '/api/legacy-proxy'
+const BASE_URL = (import.meta.env.VITE_LEGACY_API_BASE ?? '/api/legacy-proxy').replace(/\/$/, '')
 
 function getToken() {
   return localStorage.getItem('aktly_auth_token') ?? localStorage.getItem('token') ?? ''
