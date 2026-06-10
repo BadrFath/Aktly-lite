@@ -7,7 +7,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 const port = Number(process.env.PORT || 10000);
 const host = "0.0.0.0";
 const distDir = path.resolve("dist");
-const dataDir = path.resolve(".data");
+const dataDir = path.resolve(process.env.DATA_DIR || ".data");
 const usersFile = path.join(dataDir, "users.json");
 const sessionsFile = path.join(dataDir, "sessions.json");
 const privilegedEmails = new Set(["badrfath16@gmail.com", "contact@legakte.be"]);
