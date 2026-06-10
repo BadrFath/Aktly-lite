@@ -1034,25 +1034,19 @@ async function fetchBcePublicCompany(enterpriseNumber, langue) {
   }
 
   const requestedLang = String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  const actionLu = requestedLang === "nl" ? "Zoeken" : "Rechercher";
   const requests = [
     {
       method: "GET",
-      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(requestedLang === "nl" ? "Zoeken" : "Rechercher")}`,
-    },
-    {
-      method: "GET",
-      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Rechercher")}`,
-    },
-    {
-      method: "GET",
-      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Zoeken")}`,
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(actionLu)}&lang=${encodeURIComponent(requestedLang)}`,
     },
     {
       method: "POST",
       url: "https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html",
       body: new URLSearchParams({
         nummer: cleanNumber,
-        actionLu: requestedLang === "nl" ? "Zoeken" : "Rechercher",
+        actionLu,
+        lang: requestedLang,
       }).toString(),
     },
   ];
@@ -1211,25 +1205,19 @@ async function fetchBcePublicDirigeants(enterpriseNumber, langue) {
   }
 
   const requestedLang = String(langue || "fr").toLowerCase() === "nl" ? "nl" : "fr";
+  const actionLu = requestedLang === "nl" ? "Zoeken" : "Rechercher";
   const requests = [
     {
       method: "GET",
-      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(requestedLang === "nl" ? "Zoeken" : "Rechercher")}`,
-    },
-    {
-      method: "GET",
-      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Rechercher")}`,
-    },
-    {
-      method: "GET",
-      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent("Zoeken")}`,
+      url: `https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html?nummer=${encodeURIComponent(cleanNumber)}&actionLu=${encodeURIComponent(actionLu)}&lang=${encodeURIComponent(requestedLang)}`,
     },
     {
       method: "POST",
       url: "https://kbopub.economie.fgov.be/kbopub/zoeknummerform.html",
       body: new URLSearchParams({
         nummer: cleanNumber,
-        actionLu: requestedLang === "nl" ? "Zoeken" : "Rechercher",
+        actionLu,
+        lang: requestedLang,
       }).toString(),
     },
   ];
