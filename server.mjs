@@ -757,32 +757,31 @@ async function fetchBceSoapCompany(enterpriseNumber, langue) {
         }
 
         const parsed = parseBceEnterpriseResponse(body, cleanNumber, attemptLang);
-        writeBceCache(cleanNumber, attemptLang, parsed.company, parsed.dirigeants);
 
-        if (attemptLang !== requestedLang) {
-          // Dutch SOAP was used as fallback for a French request.
-          // The Dutch SOAP XML only contains Dutch descriptions, so we supplement
-          // the address and legal form from the public BCE website in the requested language.
-          try {
-            const pub = await fetchBcePublicCompany(cleanNumber, requestedLang);
-            if (pub) {
-              if (pub.addresses && pub.addresses[0]) {
-                parsed.company.addresses = pub.addresses;
-                parsed.company.address = pub.address || pub.addresses[0].full || "";
-              }
-              if (pub.enterprise && pub.enterprise.legalForm) {
-                parsed.company.enterprise = {
-                  ...parsed.company.enterprise,
-                  legalForm: pub.enterprise.legalForm,
-                  legalFormDescriptions: pub.enterprise.legalFormDescriptions || parsed.company.enterprise.legalFormDescriptions,
-                };
-              }
+        // BCE SOAP XML may only contain descriptions in the SOAP request language.
+        // Always enrich address and legal form from the public BCE website
+        // to ensure the UI language is respected.
+        try {
+          const pub = await fetchBcePublicCompany(cleanNumber, requestedLang);
+          if (pub) {
+            if (pub.addresses && pub.addresses[0]) {
+              parsed.company.addresses = pub.addresses;
+              parsed.company.address = pub.address || pub.addresses[0].full || "";
             }
-          } catch (_pubErr) {
-            // Ignore — keep Dutch data as-is
+            if (pub.enterprise && pub.enterprise.legalForm) {
+              parsed.company.enterprise = {
+                ...parsed.company.enterprise,
+                legalForm: pub.enterprise.legalForm,
+              };
+            }
           }
-          // Cache the corrected French version separately
-          writeBceCache(cleanNumber, requestedLang, parsed.company, parsed.dirigeants);
+        } catch (_pubErr) {
+          // Ignore — keep SOAP data as-is
+        }
+
+        writeBceCache(cleanNumber, requestedLang, parsed.company, parsed.dirigeants);
+        if (attemptLang !== requestedLang) {
+          writeBceCache(cleanNumber, attemptLang, parsed.company, parsed.dirigeants);
         }
         return parsed;
       } catch (error) {
