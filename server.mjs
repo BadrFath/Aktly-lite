@@ -261,9 +261,11 @@ async function ensureSessionsStore() {
 
 async function readUsers() {
   await ensureUsersStore();
-  const raw = await fs.readFile(usersFile, "utf8");
-  const parsed = JSON.parse(raw);
-  return Array.isArray(parsed) ? parsed : [];
+  try {
+    const raw = await fs.readFile(usersFile, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 
 async function writeUsers(users) {
@@ -273,9 +275,11 @@ async function writeUsers(users) {
 
 async function readSessions() {
   await ensureSessionsStore();
-  const raw = await fs.readFile(sessionsFile, "utf8");
-  const parsed = JSON.parse(raw);
-  return Array.isArray(parsed) ? parsed : [];
+  try {
+    const raw = await fs.readFile(sessionsFile, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 
 async function writeSessions(sessions) {
@@ -3725,9 +3729,11 @@ async function ensureLegacyDemandesStore() {
 
 async function readLegacyDemandes() {
   await ensureLegacyDemandesStore();
-  const raw = await fs.readFile(legacyDemandesFile, "utf8");
-  const parsed = JSON.parse(raw);
-  return Array.isArray(parsed) ? parsed : [];
+  try {
+    const raw = await fs.readFile(legacyDemandesFile, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 
 async function writeLegacyDemandes(list) {
@@ -4461,9 +4467,9 @@ sendJson(res, 404, { message: "Route legacy inconnue." });
     res.end(content);
   } catch (error) {
     res.statusCode = 500;
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.end("Internal Server Error");
-    console.error(error);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.end(JSON.stringify({ message: "Internal Server Error", details: String(error?.message || error) }));
+    console.error("[500]", req.method, req.url, error);
   }
 });
 
