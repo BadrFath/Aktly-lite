@@ -3887,10 +3887,31 @@ function buildExtraitTemplate(demande) {
   return `EXTRAIT DU PROCES-VERBAL\nDE L'ASSEMBLEE GENERALE EXTRAORDINAIRE\nDE ${denomination} (${num})\n\nAssemblee tenue a ${faitA} le ${dateAssemblee}\n\nL'assemblee generale extraordinaire a decide le transfert du siege social, avec effet au ${dateChangement}.\n\nFait a ${faitA}, le ${dateAssemblee}.`;
 }
 
+const ALLOWED_ORIGINS = [
+  "https://aktly.be",
+  "https://www.aktly.be",
+  "https://aktly-lite.onrender.com",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
 const server = http.createServer(async (req, res) => {
   try {
     const method = req.method || "GET";
     const requestPath = (req.url || "/").split("?")[0];
+
+    // CORS headers
+    const reqOrigin = req.headers["origin"] || "";
+    const corsOrigin = ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : ALLOWED_ORIGINS[0];
+    res.setHeader("Access-Control-Allow-Origin", corsOrigin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    if (method === "OPTIONS") {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
 
     if (method === "POST" && requestPath === "/api/auth/login") {
       if (useRemoteAuth) {
