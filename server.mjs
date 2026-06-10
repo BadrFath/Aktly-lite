@@ -2139,6 +2139,11 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   const digits = rawNumber.replace(/\D/g, "");
   const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
 
+  function hasSiegeKeyword(text) {
+    const n = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return n.includes("transfert") || n.includes("siege") || n.includes("deplacement");
+  }
+
   // Build action phrase from active services
   const actions = [];
   if (data.services?.cessionParts) actions.push("cession de parts");
@@ -2147,6 +2152,11 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
     actions.push("démission administrateur");
     actions.push("nomination d'administrateur");
   }
+  // Detect from pubText if services not set
+  const pubTextStr = typeof data.pubText === 'string' ? data.pubText : (data.pubText?.part1 || '');
+  if (!data.services?.addressChange && hasSiegeKeyword(pubTextStr)) {
+    if (!actions.some(a => a.includes("transfert"))) actions.push("transfert de siège social");
+  }
   let phrase = "";
   if (actions.length > 0) {
     const last = actions.length > 1 ? actions.pop() : "";
@@ -2154,17 +2164,10 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
     phrase = phrase.charAt(0).toUpperCase() + phrase.slice(1);
     phrase = wordwrapHtml(phrase, 88);
   }
-  if (!phrase && data.pubText) {
-    const pt1 = typeof data.pubText === 'string' ? data.pubText : (data.pubText?.part1 || '');
-    const textLower = String(pt1).toLowerCase();
-    // Detect transfer/address change from pubText keywords
-    if (textLower.includes('transfert') || textLower.includes('d\u00e9placement') || textLower.includes('si\u00e8ge')) {
-      phrase = wordwrapHtml("Transfert de si\u00e8ge social", 88);
-    } else {
-      const firstSentence = String(pt1).split(/[\.\n]/)[0].trim();
-      if (firstSentence.length > 5 && firstSentence.length < 120) {
-        phrase = wordwrapHtml(firstSentence, 88);
-      }
+  if (!phrase && pubTextStr) {
+    const firstSentence = String(pubTextStr).split(/[\.\n]/)[0].trim();
+    if (firstSentence.length > 5 && firstSentence.length < 120) {
+      phrase = wordwrapHtml(firstSentence, 88);
     }
   }
   if (!phrase) {
