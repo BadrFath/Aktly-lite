@@ -2144,8 +2144,16 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   const formattedNumber = digits.length === 9 ? "0" + digits : rawNumber;
 
   function hasSiegeKeyword(text) {
-    const n = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return n.includes("transfert") || n.includes("siege") || n.includes("deplacement");
+    // Strip HTML tags and decode entities before keyword check
+    const plain = String(text || "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&[a-z]+;/gi, "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return plain.includes("transfert") || plain.includes("siege") || plain.includes("deplacement");
   }
 
   // Build action phrase from active services
@@ -2906,15 +2914,18 @@ function buildLegacyServices(demande) {
   const pdfFields = demande.pdf_fields || {};
   const services = demande.services || {};
   const donneesActe = demande.donnees_acte || demande.donneesActe || {};
+  const pvRaw = String(demande.pv_text || demande.pub_text || "")
+    .replace(/<[^>]*>/g, " ").replace(/&[a-z]+;/gi, "")
+    .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const hasTransfertSiege = Boolean(
     donneesActe.transfert_siege?.nouvelle_adresse ||
     donneesActe.transfertSiege?.nouvelle_adresse ||
     demande.transfert_siege?.nouvelle_adresse ||
     demande.transfertSiege?.nouvelle_adresse ||
     demande.newAddress ||
-    String(demande.pv_text || demande.pub_text || "").toLowerCase().includes("transfert") ||
-    String(demande.pv_text || demande.pub_text || "").toLowerCase().includes("siège") ||
-    String(demande.pv_text || demande.pub_text || "").toLowerCase().includes("déplacement")
+    pvRaw.includes("transfert") ||
+    pvRaw.includes("siege") ||
+    pvRaw.includes("deplacement")
   );
   return {
     cessionParts: pdfFields.cession_parts_service == 1 || Boolean(demande.cession_parts_service) || Boolean(services.cessionParts),
