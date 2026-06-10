@@ -2336,7 +2336,7 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
     `Nom : ${cessationName1}<span class="ff7 fs4">`,
   );
   html = html.replace(
-    'NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> : <span class="ff7 fs4">',
+    "NÂ° d'entreprise<span class=\"_ _0\"></span><span class=\"ff3\"> : <span class=\"ff7 fs4\">",
     `NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> : ${cessationNumber1}<span class="ff7 fs4">`,
   );
   html = replaceOnce(
@@ -2346,7 +2346,7 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   );
   html = replaceOnce(
     html,
-    'NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
+    "NÂ° d'entreprise<span class=\"_ _0\"></span><span class=\"ff3\"> </span></span>: <span class=\"ls0\"> </span>",
     `NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber2}</span>`,
   );
   html = replaceOnce(
@@ -2356,7 +2356,7 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   );
   html = replaceOnce(
     html,
-    'NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
+    "NÂ° d'entreprise<span class=\"_ _0\"></span><span class=\"ff3\"> </span></span>: <span class=\"ls0\"> </span>",
     `NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber3}</span>`,
   );
 
