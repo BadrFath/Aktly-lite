@@ -2156,9 +2156,15 @@ async function buildFormulaire1HtmlPage(data, autoprint = false) {
   }
   if (!phrase && data.pubText) {
     const pt1 = typeof data.pubText === 'string' ? data.pubText : (data.pubText?.part1 || '');
-    const firstSentence = String(pt1).split(/[\.\n]/)[0].trim();
-    if (firstSentence.length > 5 && firstSentence.length < 120) {
-      phrase = wordwrapHtml(firstSentence, 88);
+    const textLower = String(pt1).toLowerCase();
+    // Detect transfer/address change from pubText keywords
+    if (textLower.includes('transfert') || textLower.includes('d\u00e9placement') || textLower.includes('si\u00e8ge')) {
+      phrase = wordwrapHtml("Transfert de si\u00e8ge social", 88);
+    } else {
+      const firstSentence = String(pt1).split(/[\.\n]/)[0].trim();
+      if (firstSentence.length > 5 && firstSentence.length < 120) {
+        phrase = wordwrapHtml(firstSentence, 88);
+      }
     }
   }
   if (!phrase) {
