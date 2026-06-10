@@ -987,28 +987,40 @@ function extractCompanyDenominationFromHtml(html) {
 function parseAddressParts(addressText) {
   const lines = cleanBceLines(addressText);
 
-  const lineOne = lines[0] || "";
-  const lineTwo = lines[1] || "";
-
+  // Find postal code + municipality on any line (starts with 4 digits)
   let postalCode = "";
   let municipality = "";
-  const lineTwoMatch = lineTwo.match(/^(\d{4})\s+(.+)$/);
-  if (lineTwoMatch) {
-    postalCode = lineTwoMatch[1];
-    municipality = lineTwoMatch[2];
+  for (const line of lines) {
+    const m = line.match(/^(\d{4})\s+(.+)$/);
+    if (m) {
+      postalCode = m[1];
+      municipality = m[2].trim();
+      break;
+    }
   }
 
+  // Find box number on any line (e.g. "Boîte 34", "bus 34")
+  let box = "";
+  for (const line of lines) {
+    const m = line.match(/^(?:bo[iî]te\.?|bus|bte|box)\s+(\S+)/i);
+    if (m) {
+      box = m[1];
+      break;
+    }
+  }
+
+  // First line is street + house number (and possibly inline box)
+  const lineOne = lines[0] || "";
   let street = "";
   let houseNumber = "";
-  let box = "";
 
-  const withBox = lineOne.match(/^(.*?)\s+(\d+[\w\/-]*)\s+(?:boite|boite\.|bus|bte)\s*([\w\/-]+)$/i);
+  const withBoxInline = lineOne.match(/^(.*?)\s+(\d+[\w\/-]*)\s+(?:bo[iî]te\.?|bus|bte|box)\s*([\w\/-]+)$/i);
   const withoutBox = lineOne.match(/^(.*?)\s+(\d+[\w\/-]*)$/i);
 
-  if (withBox) {
-    street = withBox[1].trim();
-    houseNumber = withBox[2].trim();
-    box = withBox[3].trim();
+  if (withBoxInline) {
+    street = withBoxInline[1].trim();
+    houseNumber = withBoxInline[2].trim();
+    if (!box) box = withBoxInline[3].trim();
   } else if (withoutBox) {
     street = withoutBox[1].trim();
     houseNumber = withoutBox[2].trim();
@@ -1016,15 +1028,15 @@ function parseAddressParts(addressText) {
     street = lineOne;
   }
 
-  return {
-    street,
-    houseNumber,
-    box,
-    postalCode,
-    municipality,
-    country: "Belgique",
-    full: lines.join(", "),
-  };
+  const full = [
+    [street, houseNumber].filter(Boolean).join(" "),
+    box ? `boite ${box}` : "",
+    [postalCode, municipality].filter(Boolean).join(" "),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return { street, houseNumber, box, postalCode, municipality, country: "Belgique", full };
 }
 
 async function fetchBcePublicCompany(enterpriseNumber, langue) {
@@ -2883,8 +2895,13 @@ function buildLegacyServices(demande) {
   const donneesActe = demande.donnees_acte || demande.donneesActe || {};
   const hasTransfertSiege = Boolean(
     donneesActe.transfert_siege?.nouvelle_adresse ||
+    donneesActe.transfertSiege?.nouvelle_adresse ||
     demande.transfert_siege?.nouvelle_adresse ||
-    demande.newAddress
+    demande.transfertSiege?.nouvelle_adresse ||
+    demande.newAddress ||
+    String(demande.pv_text || demande.pub_text || "").toLowerCase().includes("transfert") ||
+    String(demande.pv_text || demande.pub_text || "").toLowerCase().includes("siège") ||
+    String(demande.pv_text || demande.pub_text || "").toLowerCase().includes("déplacement")
   );
   return {
     cessionParts: pdfFields.cession_parts_service == 1 || Boolean(demande.cession_parts_service) || Boolean(services.cessionParts),
