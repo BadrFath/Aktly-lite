@@ -756,10 +756,13 @@ async function fetchBceSoapCompany(enterpriseNumber, langue) {
           throw new Error(`BCE SOAP HTTP ${response.status}`);
         }
 
-        const parsed = parseBceEnterpriseResponse(body, cleanNumber, attemptLang);
-        writeBceCache(cleanNumber, attemptLang, parsed.company, parsed.dirigeants);
+        // BCE XML includes multilingual descriptions regardless of SOAP request language.
+        // Always parse and return using requestedLang to keep UI language consistent.
+        const parsed = parseBceEnterpriseResponse(body, cleanNumber, requestedLang);
+        writeBceCache(cleanNumber, requestedLang, parsed.company, parsed.dirigeants);
         if (attemptLang !== requestedLang) {
-          writeBceCache(cleanNumber, requestedLang, parsed.company, parsed.dirigeants);
+          const parsedAttempt = parseBceEnterpriseResponse(body, cleanNumber, attemptLang);
+          writeBceCache(cleanNumber, attemptLang, parsedAttempt.company, parsedAttempt.dirigeants);
         }
         return parsed;
       } catch (error) {
