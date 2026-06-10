@@ -2915,8 +2915,19 @@ function esc(str) {
 }
 
 async function buildPvAgHtml(demande) {
-  const bce = normalizeBceForPdf(demande.bce_data || {});
-  const lang = demande.langue || (demande.bce_data && demande.bce_data.lang_entre) || "fr";
+  let bceData = demande.bce_data || {};
+  const enterpriseNumber = String(bceData.number || bceData.enterpriseNumber || demande.enterprise_number || "").replace(/\D/g, "");
+  const lang = demande.langue || bceData.lang_entre || "fr";
+  let bce = normalizeBceForPdf(bceData);
+  if (enterpriseNumber && (!bce.address.postalCode || !bce.address.municipality)) {
+    try {
+      const fresh = await fetchBcePublicCompany(enterpriseNumber, lang);
+      if (fresh) {
+        const freshBce = normalizeBceForPdf(fresh);
+        if (freshBce.address.postalCode) bce = freshBce;
+      }
+    } catch (_) {}
+  }
   const services = buildLegacyServices(demande);
   return buildPvAssembleeGeneraleHtmlPage({
     lang, demandeLang: lang,
@@ -2974,8 +2985,26 @@ async function buildAttestationHtml(demande) {
 }
 
 async function buildFormulaire1Html(demande) {
-  const bce = normalizeBceForPdf(demande.bce_data || {});
-  const lang = demande.langue || (demande.bce_data && demande.bce_data.lang_entre) || "fr";
+  let bceData = demande.bce_data || {};
+  const enterpriseNumber = String(bceData.number || bceData.enterpriseNumber || demande.enterprise_number || "").replace(/\D/g, "");
+  const lang = demande.langue || bceData.lang_entre || "fr";
+
+  // If address data is incomplete (missing postal code), re-fetch from KBO
+  let bce = normalizeBceForPdf(bceData);
+  if (enterpriseNumber && (!bce.address.postalCode || !bce.address.municipality)) {
+    try {
+      const fresh = await fetchBcePublicCompany(enterpriseNumber, lang);
+      if (fresh) {
+        const freshBce = normalizeBceForPdf(fresh);
+        if (freshBce.address.postalCode) {
+          bce = freshBce;
+          // Also patch bce_data for future calls
+          bceData = { ...bceData, addresses: fresh.addresses };
+        }
+      }
+    } catch (_) {}
+  }
+
   const services = buildLegacyServices(demande);
   return buildFormulaire1HtmlPage({
     langue: lang,
