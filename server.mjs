@@ -35,6 +35,7 @@ const stripePaymentLinkRuntime = (
 const legacyApiBaseUrl = (process.env.LEGACY_API_BASE_URL || "http://127.0.0.1:8000/api").trim().replace(/\/$/, "");
 const legacyDemandesFile = path.join(dataDir, "legacy-demandes.json");
 const legacyDepositairesFile = path.join(dataDir, "legacy-depositaires.json");
+const importSecret = (process.env.IMPORT_SECRET || "aktly-import-secret-2026").trim();
 const openaiApiKey = (process.env.OPENAI_API_KEY || "").trim();
 const anthropicApiKey = (process.env.ANTHROPIC_API_KEY || "").trim();
 const bceSoapServiceUrl = (process.env.BCE_SOAP_URL || "https://kbopub.economie.fgov.be/kbopubws110000/services/wsKBOPub").trim();
@@ -4242,6 +4243,46 @@ const server = http.createServer(async (req, res) => {
           } catch {}
           sendJson(res, 422, { message: "Entreprise introuvable.", details: String(soapErr?.message || soapErr) });
         }
+        return;
+      }
+
+      // POST /import-demande  — import a full demande from Laravel (requires IMPORT_SECRET header)
+      if (method === "POST" && legacyPath === "/import-demande") {
+        const secret = req.headers["x-import-secret"] || "";
+        if (secret !== importSecret) { sendJson(res, 403, { message: "Secret invalide." }); return; }
+        const payload = await readJsonBody(req);
+        if (!payload || !payload.id) { sendJson(res, 422, { message: "id manquant." }); return; }
+        const demandes = await readLegacyDemandes();
+        const idx = demandes.findIndex(d => d.id === payload.id);
+        if (idx !== -1) {
+          demandes[idx] = { ...demandes[idx], ...payload };
+        } else {
+          demandes.push({ ...payload, imported_at: new Date().toISOString() });
+          if (demandes.length > 5000) demandes.splice(0, demandes.length - 5000);
+        }
+        await writeLegacyDemandes(demandes);
+        sendJson(res, 200, { ok: true, id: payload.id });
+        return;
+      }
+
+      // POST /import-demandes  — bulk import array of demandes
+      if (method === "POST" && legacyPath === "/import-demandes") {
+        const secret = req.headers["x-import-secret"] || "";
+        if (secret !== importSecret) { sendJson(res, 403, { message: "Secret invalide." }); return; }
+        const payload = await readJsonBody(req);
+        const list = Array.isArray(payload) ? payload : (payload?.demandes || []);
+        if (!list.length) { sendJson(res, 422, { message: "Liste vide." }); return; }
+        const demandes = await readLegacyDemandes();
+        let imported = 0, updated = 0;
+        for (const item of list) {
+          if (!item?.id) continue;
+          const idx = demandes.findIndex(d => d.id === item.id);
+          if (idx !== -1) { demandes[idx] = { ...demandes[idx], ...item }; updated++; }
+          else { demandes.push({ ...item, imported_at: new Date().toISOString() }); imported++; }
+        }
+        if (demandes.length > 5000) demandes.splice(0, demandes.length - 5000);
+        await writeLegacyDemandes(demandes);
+        sendJson(res, 200, { ok: true, imported, updated, total: demandes.length });
         return;
       }
 
