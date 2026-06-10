@@ -1877,7 +1877,7 @@ function generatePubTextHtml(data) {
     if (normalizedServiceLabels.some((label) => label.includes("siege") || label.includes("zetel"))) {
       normalizedServices.addressChange = true;
     }
-    if (normalizedServiceLabels.some((label) => label.includes("dÃ©mission") || label.includes("ontslag"))) {
+    if (normalizedServiceLabels.some((label) => label.includes("démission") || label.includes("ontslag"))) {
       normalizedServices.dirigeants = true;
     }
     if (normalizedServiceLabels.some((label) => label.includes("nomination") || label.includes("benoeming"))) {
@@ -1890,10 +1890,10 @@ function generatePubTextHtml(data) {
     serviceSummary.push(isNl ? "Cessie van aandelen" : "Cession de parts");
   }
   if (normalizedServices.addressChange) {
-    serviceSummary.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siÃ¨ge social");
+    serviceSummary.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siège social");
   }
   if (normalizedServices.dirigeants) {
-    serviceSummary.push(isNl ? "Ontslag en benoeming van bestuurder" : "DÃ©mission et nomination dâ€™administrateur");
+    serviceSummary.push(isNl ? "Ontslag en benoeming van bestuurder" : "Démission et nomination d'administrateur");
   }
 
   const orderItems = [];
@@ -1901,11 +1901,11 @@ function generatePubTextHtml(data) {
     orderItems.push(isNl ? "Cessie van aandelen" : "Cession de parts");
   }
   if (normalizedServices.addressChange) {
-    orderItems.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siÃ¨ge social");
+    orderItems.push(isNl ? "Overdracht van maatschappelijke zetel" : "Transfert de siège social");
   }
   if (normalizedServices.dirigeants) {
-    orderItems.push(isNl ? "Ontslag van de bestuurder" : "DÃ©mission de lâ€™administrateur");
-    orderItems.push(isNl ? "Benoeming van de bestuurder" : "Nomination de lâ€™administrateur");
+    orderItems.push(isNl ? "Ontslag van de bestuurder" : "Démission de l'administrateur");
+    orderItems.push(isNl ? "Benoeming van de bestuurder" : "Nomination de l'administrateur");
   }
 
   const normalizedParticipants = normalizeParticipants(participants);
@@ -1925,7 +1925,7 @@ function generatePubTextHtml(data) {
     lines.push(
       isNl
         ? `Proces-verbaal van de buitengewone algemene vergadering van ${dateAg}`
-        : `ProcÃ¨s-verbal de lâ€™assemblÃ©e gÃ©nÃ©rale extraordinaire du ${dateAg}`
+        : `ProcÃ¨s-verbal de l'assemblÃ©e gÃ©nÃ©rale extraordinaire du ${dateAg}`
     );
     pushBlank();
   }
@@ -1950,7 +1950,7 @@ function generatePubTextHtml(data) {
       if (dateAg) details.push(`le ${dateAg}`);
       if (heureDebut) details.push(`Ã  ${heureDebut}`);
       lines.push(
-        `Lâ€™assemblÃ©e gÃ©nÃ©rale extraordinaire de la sociÃ©tÃ© a Ã©tÃ© rÃ©unie${details.length ? " " + details.join(" ") : ""} en prÃ©sence de :`
+        `L'assemblÃ©e gÃ©nÃ©rale extraordinaire de la sociÃ©tÃ© a Ã©tÃ© rÃ©unie${details.length ? " " + details.join(" ") : ""} en prÃ©sence de :`
       );
     }
     normalizedParticipants.forEach((participant) => lines.push(`- ${participant}`));
@@ -1961,7 +1961,7 @@ function generatePubTextHtml(data) {
     lines.push(
       isNl
         ? `Het volledige kapitaal is vertegenwoordigd (${capitalTotal} aandelen), de vergadering kan geldig beslissen over de agenda:`
-        : `Lâ€™ensemble du capital Ã©tant rÃ©uni (${capitalTotal} actions), lâ€™assemblÃ©e peut valablement statuer sur lâ€™ordre du jour :`
+        : `L'ensemble du capital Ã©tant rÃ©uni (${capitalTotal} actions), l'assemblÃ©e peut valablement statuer sur l'ordre du jour :`
     );
     orderItems.forEach((item) => lines.push(`- ${item}`));
     pushBlank();
@@ -1980,7 +1980,7 @@ function generatePubTextHtml(data) {
   }
 
   if (normalizedCessions.length > 0) {
-    lines.push(isNl ? "1. Cessie van aandelen" : "1. Cession dâ€™actions");
+    lines.push(isNl ? "1. Cessie van aandelen" : "1. Cession d'actions");
     normalizedCessions.forEach((cession) => {
       lines.push(
         isNl
@@ -2021,18 +2021,18 @@ function generatePubTextHtml(data) {
   const transfertAddress = toScalarString(transfertSiege?.nouvelle_adresse || data?.newAddress || "");
   if (transfertAddress) {
     const effectDate = formatDateLong(transfertSiege?.date_effet || data?.changeDate || "", lang);
-    lines.push(isNl ? "2. Overdracht van maatschappelijke zetel" : "2. Transfert de siÃ¨ge social");
+    lines.push(isNl ? "2. Overdracht van maatschappelijke zetel" : "2. Transfert de siège social");
     if (effectDate) {
       lines.push(
         isNl
           ? `De maatschappelijke zetel wordt overgedragen naar ${transfertAddress}, met ingang op ${effectDate}.`
-          : `Le siÃ¨ge social est transfÃ©rÃ© Ã  ${transfertAddress}, avec effet au ${effectDate}.`
+          : `Le siège social est transféré Ã  ${transfertAddress}, avec effet au ${effectDate}.`
       );
     } else {
       lines.push(
         isNl
           ? `De maatschappelijke zetel wordt overgedragen naar ${transfertAddress}.`
-          : `Le siÃ¨ge social est transfÃ©rÃ© Ã  ${transfertAddress}.`
+          : `Le siège social est transféré Ã  ${transfertAddress}.`
       );
     }
     pushBlank();
@@ -2040,18 +2040,18 @@ function generatePubTextHtml(data) {
 
   if (demissionnaires.length > 0) {
     const names = demissionnaires.join(", ");
-    lines.push(isNl ? "3. Ontslag van de bestuurder" : "3. DÃ©mission de lâ€™administrateur");
+    lines.push(isNl ? "3. Ontslag van de bestuurder" : "3. Démission de l'administrateur");
     if (dateAg) {
       lines.push(
         isNl
           ? `Het ontslag van ${names} uit zijn functie van bestuurder met kwijting van alle aansprakelijkheid zonder voorbehoud, met ingang op ${dateAg}.`
-          : `La dÃ©mission de ${names} de son poste dâ€™administrateur lui donnant dÃ©charge de toute responsabilitÃ© sans rÃ©serve, avec effet au ${dateAg}.`
+          : `La démission de ${names} de son poste d'administrateur lui donnant décharge de toute responsabilité sans rÃ©serve, avec effet au ${dateAg}.`
       );
     } else {
       lines.push(
         isNl
           ? `Het ontslag van ${names} uit zijn functie van bestuurder met kwijting van alle aansprakelijkheid zonder voorbehoud.`
-          : `La dÃ©mission de ${names} de son poste dâ€™administrateur lui donnant dÃ©charge de toute responsabilitÃ© sans rÃ©serve.`
+          : `La démission de ${names} de son poste d'administrateur lui donnant décharge de toute responsabilité sans rÃ©serve.`
       );
     }
     pushBlank();
@@ -2059,18 +2059,18 @@ function generatePubTextHtml(data) {
 
   if (nommes.length > 0) {
     const names = nommes.join(", ");
-    lines.push(isNl ? "4. Benoeming van een bestuurder" : "4. Nomination dâ€™un administrateur");
+    lines.push(isNl ? "4. Benoeming van een bestuurder" : "4. Nomination d'un administrateur");
     if (dateAg) {
       lines.push(
         isNl
           ? `Deze buitengewone algemene vergadering aanvaardt de benoeming van ${names} tot bestuurder, die aanvaardt, met ingang op ${dateAg}.`
-          : `La dite assemblÃ©e gÃ©nÃ©rale extraordinaire accepte la nomination de ${names} au poste dâ€™administrateur, lequel/laquelle accepte, avec effet au ${dateAg}.`
+          : `La dite assemblÃ©e gÃ©nÃ©rale extraordinaire accepte la nomination de ${names} au poste d'administrateur, lequel/laquelle accepte, avec effet au ${dateAg}.`
       );
     } else {
       lines.push(
         isNl
           ? `Deze buitengewone algemene vergadering aanvaardt de benoeming van ${names} tot bestuurder, die aanvaardt.`
-          : `La dite assemblÃ©e gÃ©nÃ©rale extraordinaire accepte la nomination de ${names} au poste dâ€™administrateur, lequel/laquelle accepte.`
+          : `La dite assemblÃ©e gÃ©nÃ©rale extraordinaire accepte la nomination de ${names} au poste d'administrateur, lequel/laquelle accepte.`
       );
     }
     pushBlank();
@@ -2336,8 +2336,8 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
     `Nom : ${cessationName1}<span class="ff7 fs4">`,
   );
   html = html.replace(
-    'NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> : <span class="ff7 fs4">',
-    `NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> : ${cessationNumber1}<span class="ff7 fs4">`,
+    'NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> : <span class="ff7 fs4">',
+    `NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> : ${cessationNumber1}<span class="ff7 fs4">`,
   );
   html = replaceOnce(
     html,
@@ -2346,8 +2346,8 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   );
   html = replaceOnce(
     html,
-    'NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
-    `NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber2}</span>`,
+    'NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
+    `NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber2}</span>`,
   );
   html = replaceOnce(
     html,
@@ -2356,8 +2356,8 @@ async function buildFormulaire2HtmlPage(data, autoprint = false) {
   );
   html = replaceOnce(
     html,
-    'NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
-    `NÂ° dâ€™entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber3}</span>`,
+    'NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0"> </span>',
+    `NÂ° d'entreprise<span class="_ _0"></span><span class="ff3"> </span></span>: <span class="ls0">${cessationNumber3}</span>`,
   );
 
   // Blank out all remaining __TOKEN__ (succursale, dissolution, liquidation, registre, site web, etc.)
@@ -2504,10 +2504,10 @@ function buildPvAssembleeGeneraleHtmlPage(data, autoprint = false) {
     parts.push(demandeLang === "nl" ? "Overdracht van aandelen" : "Cession de parts");
   }
   if (services.addressChange) {
-    parts.push(demandeLang === "nl" ? "Zetelverplaatsing" : "Transfert de siÃ¨ge social");
+    parts.push(demandeLang === "nl" ? "Zetelverplaatsing" : "Transfert de siège social");
   }
   if (services.dirigeants) {
-    parts.push(demandeLang === "nl" ? "Ontslag en benoeming van bestuurder" : "DÃ©mission et nomination dâ€™administrateur");
+    parts.push(demandeLang === "nl" ? "Ontslag en benoeming van bestuurder" : "Démission et nomination d'administrateur");
   }
   const servicesTitle = parts.length > 0 ? `<h3>${escapeHtml(parts.join(", "))}</h3>` : "";
   const pubTextRaw = String(data.pubText || "");
@@ -2530,7 +2530,7 @@ function buildPvAssembleeGeneraleHtmlPage(data, autoprint = false) {
   const meetingTitle =
     demandeLang === "nl"
       ? `Proces-verbaal van de buitengewone algemene vergadering van ${meetingDate}`
-      : `ProcÃ¨s-verbal de lâ€™assemblÃ©e gÃ©nÃ©rale extraordinaire du ${meetingDate}`;
+      : `ProcÃ¨s-verbal de l'assemblÃ©e gÃ©nÃ©rale extraordinaire du ${meetingDate}`;
   const autoprintScript = autoprint ? "\n<script>window.print();</script>" : "";
   let html = `<!DOCTYPE html>
 <html lang="__LANG__">
@@ -2818,6 +2818,7 @@ function parseBceForPv(bceData) {
     }
     street = buildExtractDesc(addr.street, lang) || (typeof addr.street === 'string' ? addr.street : '') || '';
     houseNumber = addr.houseNumber || '';
+    const box = addr.box || addr.boxNumber || '';
     zipcode = addr.zipCode || addr.zipcode || addr.postalCode || '';
     municipality = buildExtractDesc(addr.municipality, lang) || (typeof addr.municipality === 'string' ? addr.municipality : '') || '';
 
@@ -2852,7 +2853,7 @@ function parseBceForPv(bceData) {
       }));
     }
   } catch(e){}
-  return { denomination, formJuridique, street, houseNumber, zipcode, municipality, dirigeants };
+  return { denomination, formJuridique, street, houseNumber, box, zipcode, municipality, dirigeants };
 }
 
 function normalizeBceForPdf(bceData) {
@@ -2867,6 +2868,7 @@ function normalizeBceForPdf(bceData) {
     address: {
       street: parsed.street,
       houseNumber: parsed.houseNumber,
+      box: parsed.box || '',
       postalCode: parsed.zipcode,
       municipality: parsed.municipality,
     },
@@ -2877,10 +2879,17 @@ function normalizeBceForPdf(bceData) {
 
 function buildLegacyServices(demande) {
   const pdfFields = demande.pdf_fields || {};
+  const services = demande.services || {};
+  const donneesActe = demande.donnees_acte || demande.donneesActe || {};
+  const hasTransfertSiege = Boolean(
+    donneesActe.transfert_siege?.nouvelle_adresse ||
+    demande.transfert_siege?.nouvelle_adresse ||
+    demande.newAddress
+  );
   return {
-    cessionParts: pdfFields.cession_parts_service == 1 || Boolean(demande.cession_parts_service),
-    addressChange: pdfFields.address_service == 1 || Boolean(demande.address_service),
-    dirigeants: pdfFields.dirigeants_service == 1 || Boolean(demande.dirigeants_service),
+    cessionParts: pdfFields.cession_parts_service == 1 || Boolean(demande.cession_parts_service) || Boolean(services.cessionParts),
+    addressChange: pdfFields.address_service == 1 || Boolean(demande.address_service) || Boolean(services.addressChange) || hasTransfertSiege,
+    dirigeants: pdfFields.dirigeants_service == 1 || Boolean(demande.dirigeants_service) || Boolean(services.dirigeants),
   };
 }
 
@@ -2959,7 +2968,7 @@ async function buildFormulaire1Html(demande) {
     address: {
       street: bce.address.street,
       houseNumber: bce.address.houseNumber,
-      box: "",
+      box: bce.address.box || "",
       postalCode: bce.address.postalCode,
       municipality: bce.address.municipality,
       country: "Belgique",
@@ -3101,7 +3110,7 @@ async function buildDossierDocument(documentKey, body) {
   };
 
   if (documentKey === "formulaire1entr") {
-    const defaultCountry = lang === "nl" ? "BelgiÃ«" : "Belgique";
+    const defaultCountry = lang === "nl" ? "Belgique" : "Belgique";
     let address = companyData?.addresses?.[0] || {};
     // Fallback: if postalCode/municipality missing, parse from full address string
     if (!address.postalCode && !address.municipality && companyAddressDisplay) {
@@ -3168,7 +3177,7 @@ async function buildDossierDocument(documentKey, body) {
   if (documentKey === "formulaire2entr") {
     const autoprint = String(body?.autoprint || "").toLowerCase() === "true" || body?.autoprint === 1;
     const demandeAddress = addressInfo || {};
-    const defaultCountry = lang === "nl" ? "BelgiÃ«" : "Belgique";
+    const defaultCountry = lang === "nl" ? "Belgique" : "Belgique";
     const pickValue = (...values) => {
       for (const value of values) {
         const normalized = toScalarString(value).trim();
