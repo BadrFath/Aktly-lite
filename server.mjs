@@ -756,13 +756,33 @@ async function fetchBceSoapCompany(enterpriseNumber, langue) {
           throw new Error(`BCE SOAP HTTP ${response.status}`);
         }
 
-        // BCE XML includes multilingual descriptions regardless of SOAP request language.
-        // Always parse and return using requestedLang to keep UI language consistent.
-        const parsed = parseBceEnterpriseResponse(body, cleanNumber, requestedLang);
-        writeBceCache(cleanNumber, requestedLang, parsed.company, parsed.dirigeants);
+        const parsed = parseBceEnterpriseResponse(body, cleanNumber, attemptLang);
+        writeBceCache(cleanNumber, attemptLang, parsed.company, parsed.dirigeants);
+
         if (attemptLang !== requestedLang) {
-          const parsedAttempt = parseBceEnterpriseResponse(body, cleanNumber, attemptLang);
-          writeBceCache(cleanNumber, attemptLang, parsedAttempt.company, parsedAttempt.dirigeants);
+          // Dutch SOAP was used as fallback for a French request.
+          // The Dutch SOAP XML only contains Dutch descriptions, so we supplement
+          // the address and legal form from the public BCE website in the requested language.
+          try {
+            const pub = await fetchBcePublicCompany(cleanNumber, requestedLang);
+            if (pub) {
+              if (pub.addresses && pub.addresses[0]) {
+                parsed.company.addresses = pub.addresses;
+                parsed.company.address = pub.address || pub.addresses[0].full || "";
+              }
+              if (pub.enterprise && pub.enterprise.legalForm) {
+                parsed.company.enterprise = {
+                  ...parsed.company.enterprise,
+                  legalForm: pub.enterprise.legalForm,
+                  legalFormDescriptions: pub.enterprise.legalFormDescriptions || parsed.company.enterprise.legalFormDescriptions,
+                };
+              }
+            }
+          } catch (_pubErr) {
+            // Ignore — keep Dutch data as-is
+          }
+          // Cache the corrected French version separately
+          writeBceCache(cleanNumber, requestedLang, parsed.company, parsed.dirigeants);
         }
         return parsed;
       } catch (error) {
